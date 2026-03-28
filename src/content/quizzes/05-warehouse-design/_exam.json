@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "05-warehouse-design/_exam",
+  "moduleId": "05-warehouse-design",
+  "examTitle": "Экзамен: Data Warehouse Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m05-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m05-exam-q1",
+      "type": "multiple-choice",
+      "question": "Компания выбирает между cloud warehouse (Snowflake) и lakehouse (Iceberg + Spark). Workload: 80% SQL BI отчёты, 20% ML pipelines на Python. Данные: 10 TB structured. Что выбрать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только lakehouse — дешевле"
+        },
+        {
+          "id": "b",
+          "text": "Гибридный подход: lakehouse (Iceberg) для raw/staging + warehouse (Snowflake) для Gold/serving layer. 80% SQL workload оптимизирован в warehouse, ML team работает с lakehouse напрямую"
+        },
+        {
+          "id": "c",
+          "text": "Только warehouse — проще"
+        },
+        {
+          "id": "d",
+          "text": "Построить on-premise решение"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Warehouse vs Lakehouse",
+      "explanation": "Гибрид: lakehouse для storage (Iceberg на S3, дёшево) + warehouse для SQL serving (Snowflake, оптимизирован для BI). ML team читает Silver из lakehouse. BI analysts работают в Snowflake с Gold layer. 80% SQL workload = warehouse sweet spot. 20% ML = lakehouse flexibility.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m05-exam-q2",
+      "type": "multiple-choice",
+      "question": "Star Schema: fact_orders (1B rows) JOIN dim_customer (5M rows) JOIN dim_product (100K rows). Самый частый запрос: revenue по customer segment. Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нормализовать fact table"
+        },
+        {
+          "id": "b",
+          "text": "Добавить больше dimensions"
+        },
+        {
+          "id": "c",
+          "text": "Pre-aggregate: создать summary table daily_revenue_by_segment. Partition по date. Запрос по summary: 365 rows/year вместо 1B rows. Обновлять ежедневно через incremental pipeline"
+        },
+        {
+          "id": "d",
+          "text": "Удалить dim_product из схемы"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Dimensional Modeling",
+      "explanation": "Pre-aggregated summary table: GROUP BY segment, date → 365 × N_segments rows/year. Query time: milliseconds vs seconds. Incremental update: daily append new aggregates. Trade-off: additional storage + pipeline, but 100x query speedup для самого частого запроса.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m05-exam-q3",
+      "type": "multiple-choice",
+      "question": "dim_customer в Star Schema. Клиент переехал из Москвы в Петербург. Аналитикам нужны оба варианта: текущий адрес для operational отчётов и исторический адрес для анализа 'revenue по городу на момент заказа'. Какой подход?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SCD Type 2: новая строка с new address, valid_from/valid_to, is_current flag. fact_orders.customer_sk → surrogate key (не natural key). Каждый order ссылается на версию клиента на момент заказа. Текущий адрес: WHERE is_current = true"
+        },
+        {
+          "id": "b",
+          "text": "SCD Type 1: перезаписать адрес (потеряем историю)"
+        },
+        {
+          "id": "c",
+          "text": "Создать отдельную таблицу address_history"
+        },
+        {
+          "id": "d",
+          "text": "Хранить все адреса в JSON массиве в одной колонке"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел Slowly Changing Dimensions — SCD Types",
+      "explanation": "SCD Type 2: сохраняет полную историю. Surrogate key (customer_sk) отличается от business key (customer_id). fact_orders JOIN dim_customer ON surrogate key → получаем атрибуты клиента НА МОМЕНТ заказа. is_current flag для текущего snapshot. Trade-off: таблица растёт (N версий × M клиентов), но история preserved.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m05-exam-q4",
+      "type": "multiple-choice",
+      "question": "DWH содержит fact_clickstream (50B rows, partitioned by date). Аналитики жалуются: запрос 'unique visitors per page per day' занимает 15 минут. Как ускорить без изменения основной схемы?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Добавить больше compute nodes"
+        },
+        {
+          "id": "b",
+          "text": "Создать B-tree index на page_url"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на NoSQL database"
+        },
+        {
+          "id": "d",
+          "text": "Materialized aggregate table: pre-compute daily_page_visitors (date, page_url, unique_visitors, total_clicks). Обновлять инкрементально: каждый день append агрегат за вчера. Запрос: SELECT из агрегата (миллионы rows) вместо fact (50B rows)"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Aggregate Tables и Pre-computation Patterns",
+      "explanation": "Aggregate table: 50B rows → миллионы pre-aggregated rows. COUNT(DISTINCT) expensive на 50B — pre-compute ежедневно. Incremental: append one day's aggregate daily. Storage: negligible. Query: seconds вместо 15 minutes. Trade-off: latency (T+1 для нового дня), additional pipeline. Index (b) не поможет — columnar warehouses не используют B-tree indexes как OLTP.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

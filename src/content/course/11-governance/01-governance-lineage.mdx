@@ -1,0 +1,196 @@
+---
+title: "Governance, Cataloging & Lineage"
+description: "Data catalog, lineage tracking, access control, PII handling, GDPR compliance — governance как архитектурный слой"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Governance", "Data Catalog", "Lineage", "PII", "GDPR", "Access Control", "OpenMetadata", "DataHub"]
+---
+
+# Governance, Cataloging & Lineage
+
+## Governance — не бюрократия, а архитектура
+
+Data governance — система правил и инструментов, которая отвечает на вопросы: какие данные есть, откуда они, кто имеет доступ, где PII, как удалить данные пользователя по запросу GDPR.
+
+```
+Без governance:
+  "Где customer email?" — grep по 200 таблицам
+  "Откуда эти цифры в dashboard?" — никто не знает
+  "GDPR запрос на удаление" — 2 недели ручной работы
+
+С governance:
+  Catalog → найти за секунды
+  Lineage → проследить от source до dashboard
+  PII tagging → автоматическое маскирование
+  GDPR → автоматический workflow удаления
+```
+
+## Data Catalog: OpenMetadata vs DataHub
+
+<DiagramContainer title="Data Catalog Comparison: OpenMetadata vs DataHub">
+<Grid columns={3}>
+  <Tooltip content="Ключевые различия между двумя ведущими open-source data catalog решениями">
+    <DataBox label="Aspect" />
+  </Tooltip>
+  <Tooltip content="OpenMetadata — unified metadata platform. Monolithic Java+React. Проще в deployment, встроенный data quality (Great Expectations), растущее community. Лучший выбор для малых/средних команд">
+    <DataBox label="OpenMetadata" />
+  </Tooltip>
+  <Tooltip content="DataHub — LinkedIn-backed metadata platform. Microservices architecture. Graph DB (Neo4j) для сложного lineage. Большее community, но сложнее в операциях. Лучший для enterprise">
+    <DataBox label="DataHub" />
+  </Tooltip>
+
+  <Tooltip content="Архитектура определяет operational complexity и scaling characteristics">
+    <FlowNode label="Architecture" />
+  </Tooltip>
+  <Tooltip content="Monolith: Java backend + React UI + MySQL/PostgreSQL. Один deployment unit. Проще мониторить, debug-ить, обновлять. Ограничения при extreme scale">
+    <DataBox label="Monolith (Java + React)" />
+  </Tooltip>
+  <Tooltip content="Microservices: GMS (backend), Frontend, MAE/MCE consumers, Kafka, Elasticsearch, Neo4j/RDBMS. Гибкий scaling, но 5+ сервисов в production">
+    <DataBox label="Microservices (5+ services)" />
+  </Tooltip>
+
+  <Tooltip content="Lineage — способность проследить путь данных от source до dashboard на уровне column">
+    <FlowNode label="Lineage" />
+  </Tooltip>
+  <Tooltip content="SQL parsing + REST API для custom lineage. Column-level lineage для dbt, Spark. Визуализация в UI. Достаточно для большинства use cases">
+    <DataBox label="SQL-parsed + API" />
+  </Tooltip>
+  <Tooltip content="Graph DB (Neo4j) для native graph traversal lineage. Масштабируется на миллионы edges. Impact analysis: 'что сломается если изменить эту колонку?'">
+    <DataBox label="Graph-based (Neo4j)" />
+  </Tooltip>
+
+  <Tooltip content="Data Quality интеграция — встроенная или через внешние инструменты">
+    <FlowNode label="Data Quality" />
+  </Tooltip>
+  <Tooltip content="Встроенный data quality framework на базе Great Expectations. Profiler автоматически собирает statistics. Тесты запускаются из UI. Не нужен отдельный tool">
+    <DataBox label="Built-in (GE-based)" />   </Tooltip>
+  <Tooltip content="Интеграции с Great Expectations, dbt tests, custom assertions через API. Нет встроенного profiler — нужен отдельный инструмент для quality checks">
+    <DataBox label="Via integrations" />   </Tooltip>
+
+  <Tooltip content="Deployment complexity — сколько усилий на первоначальный setup и ongoing maintenance">
+    <FlowNode label="Deployment" />
+  </Tooltip>
+  <Tooltip content="Docker Compose или Kubernetes Helm chart. Один-два сервиса. Production-ready за день. Upgrade = одна команда">
+    <DataBox label="Simpler" />   </Tooltip>
+  <Tooltip content="Kubernetes с Helm chart (10+ pods). Kafka, Elasticsearch, Neo4j — каждый требует tuning. Production setup = 1-2 недели. Нужен dedicated ops">
+    <DataBox label="More complex" />   </Tooltip>
+</Grid>
+</DiagramContainer>
+
+| Feature | OpenMetadata | DataHub |
+|---------|-------------|---------|
+| **Architecture** | Monolith (Java + React) | Microservices (Java + React) |
+| **Metadata Store** | MySQL/PostgreSQL | Graph DB (Neo4j/RDBMS) |
+| **Lineage** | SQL-parsed + API | SQL-parsed + API |
+| **Auto-discovery** | Ingestion connectors | Ingestion recipes |
+| **Data Quality** | Built-in (Great Expectations) | Integration |
+| **Collaboration** | Conversations, tasks | Discussions |
+| **Deployment** | Simpler | More complex |
+| **Community** | Growing fast | Large, LinkedIn-backed |
+
+```
+Выбор:
+  Маленькая/средняя команда → OpenMetadata (проще deploy)
+  Enterprise с complex lineage → DataHub (graph-based)
+  Cloud-first → Managed solutions (Atlan, Select Star)
+```
+
+## Lineage Tracking
+
+```
+Column-level lineage пример:
+  
+  bronze.raw_orders.amount
+    ↓ (CAST to DECIMAL)
+  silver.orders.amount
+    ↓ (SUM GROUP BY customer)
+  gold.customer_revenue.total_revenue
+    ↓ (JOIN + format)
+  dashboard.top_customers.revenue_column
+
+Вопрос: "Почему revenue в dashboard неверный?"
+Ответ: трейсим lineage обратно → находим ошибку в CAST
+```
+
+### Lineage Sources
+
+```
+Automatic lineage extraction:
+  1. SQL parsing: parse dbt/Spark SQL → extract table/column refs
+  2. Orchestrator: Airflow/Dagster DAG structure → task dependencies
+  3. Runtime: Spark query plan → actual data flow
+  4. BI tools: Tableau/Looker → which tables feed dashboards
+
+Manual lineage:
+  5. API calls: register custom lineage for Python/API pipelines
+```
+
+## Access Control
+
+```
+Role-based access (RBAC):
+  Roles:
+    data_engineer: read/write all layers
+    analyst: read Silver + Gold
+    ml_engineer: read Silver + write feature tables
+    business_user: read Gold only
+
+  Column-level:
+    analyst: SELECT * EXCEPT (email, phone) FROM customers
+    data_engineer: SELECT * FROM customers
+
+  Row-level:
+    region_manager_eu: WHERE region = 'EU'
+    region_manager_us: WHERE region = 'US'
+```
+
+## PII Handling
+
+```
+PII Classification:
+  Direct PII: email, phone, SSN, passport → MASK or ENCRYPT
+  Quasi PII: zip_code, birth_date, IP → GENERALIZE
+  Sensitive: salary, health_data → RESTRICT access
+
+Masking strategies:
+  Hashing: SHA256(email) → deterministic, joinable
+  Tokenization: email → token_abc123 (reversible via vault)
+  Redaction: email → ***@***.com
+  Generalization: age=34 → age_group="30-40"
+
+Where to mask:
+  Bronze: raw (encrypted at rest)
+  Silver: PII masked/hashed
+  Gold: no PII (aggregated)
+```
+
+## GDPR Compliance Architecture
+
+```
+Right to be Forgotten workflow:
+  1. User submits deletion request
+  2. Catalog lookup: find all tables with user's PII
+     (lineage → which tables contain customer_id = 12345)
+  3. Delete/anonymize in each table:
+     Bronze: mark as deleted (soft delete, retain for audit)
+     Silver: DELETE WHERE customer_id = 12345
+     Gold: re-aggregate without user's data
+  4. Audit log: record deletion for compliance proof
+  5. Confirm to user within 30 days (GDPR requirement)
+  
+  Technical: Delta Lake/Iceberg support DELETE operations
+  Without table format: full partition rewrite to remove rows
+```
+
+<Callout type="warning">
+**PII в Bronze layer.** Bronze хранит raw данные включая PII. Защита: encryption at rest + strict access control + audit logging. Не маскируйте Bronze — он нужен для replay и debugging.
+</Callout>
+
+<Callout type="note">
+**Cross-reference: Data Governance курс.** Этот урок покрывает governance с позиции System Design. Для глубокого погружения (policy frameworks, data stewardship, metadata management) — курс Data Governance на этой платформе.
+</Callout>
+
+<KnowledgeCheck>
+Governance essentials: Data Catalog = "Google для данных" (OpenMetadata/DataHub). Lineage = column-level tracing от source до dashboard. Access control: RBAC + column-level + row-level. PII: hash/tokenize/redact на Silver layer, raw в Bronze (encrypted). GDPR: catalog lookup → delete across layers → audit log. В следующем модуле: Feature Store и ML Pipeline.
+</KnowledgeCheck>

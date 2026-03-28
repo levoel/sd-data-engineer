@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "08-cdc-design/_exam",
+  "moduleId": "08-cdc-design",
+  "examTitle": "Экзамен: CDC Pipeline Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m08-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m08-exam-q1",
+      "type": "multiple-choice",
+      "question": "DBA планирует ALTER TABLE customers RENAME COLUMN email TO contact_email в production PostgreSQL. Debezium CDC pipeline работает. Что произойдёт и как подготовиться?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ничего — Debezium автоматически адаптируется"
+        },
+        {
+          "id": "b",
+          "text": "Breaking change: новые events будут иметь contact_email, старые — email. Schema Registry отклонит (BACKWARD incompatible). Подготовка: 1) добавить contact_email (new), 2) dual-write, 3) migrate consumers, 4) drop email (old)"
+        },
+        {
+          "id": "c",
+          "text": "CDC pipeline остановится навсегда"
+        },
+        {
+          "id": "d",
+          "text": "Только downstream таблицы сломаются"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Schema Evolution в CDC",
+      "explanation": "RENAME COLUMN = breaking schema change. Schema Registry с BACKWARD compatibility отклонит: consumer v1 не сможет прочитать events без 'email'. Safe path: ADD contact_email → dual-write (копировать email → contact_email) → migrate consumers → DROP email. Duration: days-weeks.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m08-exam-q2",
+      "type": "multiple-choice",
+      "question": "CDC pipeline: PostgreSQL → Debezium → Kafka → Bronze → Silver. Source DB имеет 100 таблиц. Как организовать Kafka topics?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один topic для всех таблиц"
+        },
+        {
+          "id": "b",
+          "text": "Topic per database (один topic)"
+        },
+        {
+          "id": "c",
+          "text": "Topic per table: dbserver.public.orders, dbserver.public.customers — 100 topics. Partition key = primary key таблицы. Позволяет независимое потребление, разные retention per topic, параллельную обработку"
+        },
+        {
+          "id": "d",
+          "text": "Topic per schema (один topic для public)"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Debezium Architecture",
+      "explanation": "Topic per table — Debezium default и best practice. Преимущества: независимые consumers per table, разные retention policies, partition by PK → ordering guarantees per entity. Один topic для всех = single point of contention, невозможно масштабировать consumers per table.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m08-exam-q3",
+      "type": "multiple-choice",
+      "question": "Debezium connector для PostgreSQL упал на 2 часа (OOM). После перезапуска: connector начал читать WAL с последнего committed offset. Могут ли быть дубликаты в Kafka?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да, возможны дубликаты: Debezium читает WAL at-least-once. Offset commit асинхронный — события между последним commit и crash будут переотправлены. Consumer должен обеспечить idempotent processing: upsert по PK вместо INSERT, или дедупликация по (source_lsn, table, pk)"
+        },
+        {
+          "id": "b",
+          "text": "Нет — Debezium гарантирует exactly-once delivery"
+        },
+        {
+          "id": "c",
+          "text": "Нет — Kafka отфильтрует дубликаты автоматически"
+        },
+        {
+          "id": "d",
+          "text": "Да, но только для DELETE операций"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел Exactly-Once Semantics в CDC Pipelines",
+      "explanation": "Debezium: at-least-once delivery. WAL offset commit — periodic, не per-event. При crash: replay от последнего committed offset → дубликаты возможны. Mitigation: idempotent consumers (upsert on PK), или Kafka deduplication (idempotent producer + transactional consumer). Exactly-once end-to-end требует обе стороны.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m08-exam-q4",
+      "type": "multiple-choice",
+      "question": "Команда выбирает между CDC (Debezium) и periodic batch extract (SELECT * WHERE updated_at > last_run) для синхронизации PostgreSQL → Data Lake. 50 таблиц, 20 из них high-frequency updates (100K rows/hour). Что выбрать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Batch extract для всех 50 таблиц — проще"
+        },
+        {
+          "id": "b",
+          "text": "CDC для всех 50 таблиц — real-time everywhere"
+        },
+        {
+          "id": "c",
+          "text": "Microservices вместо database sync"
+        },
+        {
+          "id": "d",
+          "text": "Hybrid: CDC (Debezium) для 20 high-frequency таблиц (low latency, no DB load from queries). Batch extract для 30 low-frequency таблиц (проще, daily sufficient). CDC ловит DELETE (batch extract пропускает soft-deletes без tombstone). Постепенная миграция batch → CDC по мере роста"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел CDC vs Batch Extract — Decision Matrix",
+      "explanation": "Hybrid подход: CDC для high-frequency таблиц (100K rows/hour → batch extract создаёт нагрузку на source DB, пропускает intermediate states). Batch для low-frequency (daily changes, simple logic). CDC преимущество: captures DELETE operations, no missed updates between polls. Batch: проще debug, нет dependency на WAL.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "04-stream-processing/01-kafka-architecture",
+  "moduleId": "04-stream-processing",
+  "_meta": {
+    "idPrefix": "sdde-m04-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m04-01-q1",
+      "type": "multiple-choice",
+      "question": "Kafka topic имеет 6 partitions. Consumer Group 'analytics' имеет 8 consumers. Сколько consumers будут IDLE?",
+      "options": [
+        {
+          "id": "a",
+          "text": "2 — max active consumers = partition count (6). 8 - 6 = 2 idle consumers, получающих 0 partitions"
+        },
+        {
+          "id": "b",
+          "text": "0 — Kafka автоматически создаст дополнительные partitions"
+        },
+        {
+          "id": "c",
+          "text": "8 — все idle, ни один не подключится"
+        },
+        {
+          "id": "d",
+          "text": "Kafka не позволит добавить 8-го consumer"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Kafka rule: каждый partition назначен exactly one consumer в group. 6 partitions → max 6 active consumers. 8 consumers → 6 active + 2 idle. Idle consumers — standby для failover. Для 8 parallel consumers → нужно минимум 8 partitions.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m04-01-q2",
+      "type": "multiple-choice",
+      "question": "Events для user_123 должны обрабатываться в порядке. Kafka topic имеет 10 partitions. Какой partition key использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Без key (null) — round-robin для лучшего распределения"
+        },
+        {
+          "id": "b",
+          "text": "key = user_id ('user_123'). hash('user_123') % 10 = одна partition. Все events для user_123 в одной partition → FIFO ordering гарантирован"
+        },
+        {
+          "id": "c",
+          "text": "key = event_id — уникальный для каждого события"
+        },
+        {
+          "id": "d",
+          "text": "key = timestamp"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Kafka guarantees ordering within partition. key = user_id → hash(key) % partitions = consistent partition. All events for user_123 → same partition → FIFO. key = null → round-robin → events scatter across partitions → no ordering. key = event_id → one event per partition → no grouping.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

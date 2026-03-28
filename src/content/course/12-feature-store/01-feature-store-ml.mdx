@@ -1,0 +1,194 @@
+---
+title: "Feature Store & ML Pipeline"
+description: "Online vs offline feature stores, Feast architecture, feature computation, serving latency, training-serving skew"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Feature Store", "ML Pipeline", "Feast", "Online Features", "Offline Features", "Training-Serving Skew"]
+---
+
+# Feature Store & ML Pipeline
+
+## Зачем Feature Store
+
+ML pipeline без feature store: каждая команда дублирует feature engineering, features в training не совпадают с production, нет версионирования.
+
+```
+Без Feature Store:
+  Team A: customer_ltv = SUM(orders) last 365 days
+  Team B: customer_ltv = SUM(orders) last 360 days
+  Production: customer_ltv = AVG(orders) last 30 days (другая логика!)
+  
+  → Training-serving skew → модель деградирует
+
+С Feature Store:
+  Одно определение: customer_ltv = SUM(amount) OVER last 365 days
+  Offline (training): batch compute → stored in Parquet/Iceberg
+  Online (serving): precomputed → Redis/DynamoDB (p99 под 10ms)
+  → Consistency guaranteed
+```
+
+## Online vs Offline Feature Store
+
+<DiagramContainer title="Feature Store Architecture: Online vs Offline">
+<FlowRow>
+  <Tooltip content="Offline Store — хранит полную историю features для model training. Batch compute (Spark) ежедневно/ежечасно. Storage: Parquet/Iceberg на S3/GCS. Volume: TB+. Latency: секунды-минуты (acceptable для training)">
+    <DataBox label="Offline Store (Training)">
+      S3/GCS (Parquet, Iceberg) • TB+ истории • Spark batch compute • Секунды-минуты latency
+    </DataBox>
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Materialization — процесс синхронизации latest feature values из Offline в Online store. Feast: `feast materialize`. Streaming features обходят Offline и пишут в Online напрямую через Kafka/Flink">
+    <FlowNode label="Materialize (feast materialize)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Online Store — хранит только latest values для real-time inference. Key-value lookup по entity_id. Storage: Redis/DynamoDB. Volume: GB. p99 latency: <10ms. Critical для production ML serving">
+    <DataBox label="Online Store (Serving)">
+      Redis/DynamoDB • GB (latest values) • Key-value lookup • p99 &lt; 10ms
+    </DataBox>
+  </Tooltip>
+</FlowRow>
+<FlowRow>
+  <Tooltip content="Batch features вычисляются Spark job ежедневно. Примеры: user_total_orders_365d, customer_ltv, avg_order_value. Пишутся в Offline store → materialize в Online">
+    <FlowNode label="Batch Features (daily Spark)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Feature Repository (Git) — single source of truth для feature definitions. Python/YAML файлы описывают: entities, features, data sources, TTL. CI/CD applies changes">
+    <FlowNode label="Feature Repository (Git)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Streaming features вычисляются Flink/Kafka Streams в real-time. Примеры: user_orders_last_1h, current_session_duration. Пишутся напрямую в Online store через feast push">
+    <FlowNode label="Streaming Features (Flink → Online)" />
+  </Tooltip>
+</FlowRow>
+<FlowRow>
+  <Tooltip content="Training pipeline: get_historical_features() с point-in-time join. Использует Offline store. Гарантирует: модель видит только данные, доступные на момент T (no data leakage)">
+    <DataBox label="Training: get_historical_features()">
+      Point-in-time join • No data leakage • Offline store
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Serving pipeline: get_online_features() по entity_id. Использует Online store. p99 < 10ms для production inference. Те же feature definitions = нет training-serving skew">
+    <DataBox label="Serving: get_online_features()">
+      Key-value lookup • p99 &lt; 10ms • Online store
+    </DataBox>
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+| Аспект | Offline Store | Online Store |
+|--------|--------------|-------------|
+| **Use case** | Model training | Real-time inference |
+| **Latency** | Секунды-минуты | Миллисекунды (p99 под 10ms) |
+| **Storage** | S3/GCS (Parquet, Iceberg) | Redis, DynamoDB, Cassandra |
+| **Volume** | TB+ (полная история) | GB (latest values) |
+| **Compute** | Spark batch (daily/hourly) | Pre-materialized или streaming |
+| **Access** | DataFrame API | Key-value lookup |
+
+```
+Feature computation pipeline:
+  
+  Batch features (daily):
+    Source tables → Spark job → Offline store (Parquet)
+                             → Materialize to Online store (Redis)
+  
+  Streaming features (real-time):
+    Kafka events → Flink → Online store (Redis)
+    
+  Example:
+    user_total_orders_365d → batch (daily Spark)
+    user_orders_last_1h → streaming (Flink window)
+```
+
+## Feast Architecture
+
+```
+Feast components:
+  1. Feature Repository (Git):
+     - Feature definitions (Python/YAML)
+     - Entity definitions
+     - Data source references
+  
+  2. Offline Store:
+     - BigQuery, Snowflake, Redshift, file-based
+     - Historical feature values
+     - Used for: get_historical_features(entity_df, features)
+  
+  3. Online Store:
+     - Redis, DynamoDB, SQLite
+     - Latest feature values per entity
+     - Used for: get_online_features(entity_rows, features)
+  
+  4. Materialization:
+     - Batch: offline → online (feast materialize)
+     - Streaming: Kafka → online (feast push)
+```
+
+### Feature Definition
+
+```python
+# feature_repo/features.py
+from feast import Entity, Feature, FeatureView, FileSource
+from feast.types import Float64, Int64
+
+customer = Entity(name="customer", join_keys=["customer_id"])
+
+customer_features = FeatureView(
+    name="customer_features",
+    entities=[customer],
+    schema=[
+        Feature(name="total_orders", dtype=Int64),
+        Feature(name="total_revenue", dtype=Float64),
+        Feature(name="avg_order_value", dtype=Float64),
+        Feature(name="days_since_last_order", dtype=Int64),
+    ],
+    source=FileSource(path="s3://features/customer_features.parquet"),
+    ttl=timedelta(days=1),  # freshness SLA
+)
+```
+
+## Training-Serving Skew
+
+```
+Skew types:
+  1. Feature skew: training features computed differently than serving
+     Fix: single feature definition (feature store)
+  
+  2. Data skew: training data distribution differs from production
+     Fix: monitor feature distributions, retrain on fresh data
+  
+  3. Time-travel skew: training uses future data (data leakage)
+     Fix: point-in-time joins
+     
+Point-in-time join:
+  Training: for each training example at time T,
+            use feature values AS OF time T (not latest!)
+  
+  Without: model "sees future" → inflated metrics → fails in prod
+  With:    model sees only past data → realistic training
+```
+
+<Callout type="warning">
+**Point-in-time correctness — критически важно.** Без point-in-time joins модель использует "будущие" features при training → метрики завышены → модель деградирует в production. Feature store решает это: `get_historical_features()` автоматически делает point-in-time join.
+</Callout>
+
+## Feature Reuse
+
+```
+Feature reuse across models:
+  customer_features.total_revenue:
+    - Churn prediction model
+    - Upsell recommendation model
+    - Credit scoring model
+    - Customer segmentation
+  
+  4 models × 1 feature definition = consistency
+  Without feature store: 4 different implementations
+```
+
+<Callout type="tip">
+**Feature Store для Data Engineer.** DE отвечает за: batch/streaming pipelines для compute features, materialization offline → online, monitoring freshness и data quality features. ML Engineer отвечает за: feature selection, model training, inference pipeline.
+</Callout>
+
+<KnowledgeCheck>
+Feature Store essentials: Offline (Parquet, TB, training) vs Online (Redis, GB, inference p99 под 10ms). Feast: feature repo + offline store + online store + materialization. Training-serving skew: одно определение feature решает feature skew, point-in-time joins решают time-travel skew. Feature reuse: один compute → множество моделей. DE роль: pipelines + materialization + quality monitoring. В следующем модуле: Real-time Analytics.
+</KnowledgeCheck>

@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "06-lakehouse/_exam",
+  "moduleId": "06-lakehouse",
+  "examTitle": "Экзамен: Data Lakehouse Architecture",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m06-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m06-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вчера deploy сломал Silver layer transformation. Gold layer показывает неверные агрегаты за последние 3 дня. Как восстановить данные в lakehouse с Iceberg?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить все данные и запустить full reprocessing"
+        },
+        {
+          "id": "b",
+          "text": "Time travel: откатить Silver table к snapshot до ошибки (ALTER TABLE EXECUTE rollback_to_snapshot). Fix transformation. Reprocess 3 дня из Bronze (preserved, immutable). Rebuild Gold incremental"
+        },
+        {
+          "id": "c",
+          "text": "Вручную исправить Gold таблицу"
+        },
+        {
+          "id": "d",
+          "text": "Восстановить из backup"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Time Travel и Medallion Architecture",
+      "explanation": "Iceberg time travel: rollback Silver к последнему корректному snapshot. Bronze immutable → replay 3 дней через fixed pipeline. Gold rebuild из corrected Silver. Нет data loss, минимальный downtime. Full reprocessing (a) — wasteful. Manual fix (c) — error-prone.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m06-exam-q2",
+      "type": "multiple-choice",
+      "question": "Lakehouse хранит 500 TB на S3. Bronze — 80% объёма. Как оптимизировать storage cost без потери replay capability?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить Bronze полностью — Silver достаточно"
+        },
+        {
+          "id": "b",
+          "text": "Конвертировать в CSV для экономии"
+        },
+        {
+          "id": "c",
+          "text": "S3 Lifecycle: Bronze старше 30 дней → Infrequent Access, старше 90 дней → Glacier Instant. Retain for replay, но на дешёвом tier. Compaction для уменьшения file count. Expire old Iceberg snapshots (retain last 7 days)"
+        },
+        {
+          "id": "d",
+          "text": "Перенести на on-premise storage"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите разделы Compaction и Medallion Architecture",
+      "explanation": "S3 lifecycle: Standard → IA → Glacier. 400 TB Bronze: Standard $9200/mo → mixed tiers ~$2000/mo (78% savings). Snapshot expiry: Iceberg хранит metadata для каждого snapshot → expire old snapshots уменьшает metadata overhead. Compaction: fewer files = fewer S3 LIST requests = lower cost.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m06-exam-q3",
+      "type": "multiple-choice",
+      "question": "Lakehouse для IoT платформы: 1M devices, 100K events/sec, частые upserts (device status updates). Нужны: merge-on-read для low-latency writes + compaction для query performance. Какой table format?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Plain Parquet — проще всего"
+        },
+        {
+          "id": "b",
+          "text": "Apache Iceberg — лучший multi-engine support"
+        },
+        {
+          "id": "c",
+          "text": "Delta Lake — Databricks native"
+        },
+        {
+          "id": "d",
+          "text": "Apache Hudi: Merge-on-Read (MoR) таблицы оптимизированы для write-heavy workloads. Log-based upserts: write → delta log, compact периодически. Record-level indexing для быстрых point lookups. Compaction service в background для query performance"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Table Format Comparison — Hudi Merge-on-Read",
+      "explanation": "Hudi Merge-on-Read: writes идут в delta logs (fast), reads merge base + delta (slightly slower until compaction). 100K events/sec с upserts = Hudi sweet spot. Record-level index → O(1) lookup для upsert key. Iceberg (b) — лучше для analytics-heavy, partition-evolution. Delta (c) — Databricks ecosystem. Plain Parquet (a) — no upsert support.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m06-exam-q4",
+      "type": "multiple-choice",
+      "question": "Streaming ingestion пишет в Iceberg таблицу каждые 30 секунд. После месяца: 2.5M маленьких файлов (1-5 MB каждый). Queries стали в 10x медленнее. Причина и решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Small files problem: каждый micro-batch создаёт отдельные файлы. 2.5M файлов → 2.5M S3 LIST/GET operations → overhead. Fix: scheduled compaction (Iceberg rewrite_data_files) → merge до 256-512 MB. Bin-packing strategy. Snapshot expiry для cleanup metadata"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить S3 bandwidth"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на HDFS вместо S3"
+        },
+        {
+          "id": "d",
+          "text": "Уменьшить retention до 7 дней"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел Compaction Strategies и Small Files Problem",
+      "explanation": "Small files problem: streaming writes create many tiny files. S3 performance degrades: LIST calls proportional to file count, each GET has ~50ms latency overhead. Compaction: merge small files into optimal size (256-512 MB). Iceberg rewrite_data_files: bin-packing, sort-order optimization. Schedule: hourly/daily depending on ingestion rate. Snapshot expiry: clean old metadata after compaction.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

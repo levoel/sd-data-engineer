@@ -1,0 +1,198 @@
+---
+title: "Data Quality & Observability"
+description: "Data contracts, Great Expectations, dbt tests, SLA monitoring, anomaly detection, freshness/completeness/accuracy"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 23
+topics: ["Data Quality", "Observability", "Data Contracts", "Great Expectations", "dbt Tests", "SLA"]
+---
+
+# Data Quality & Observability
+
+## Почему Data Quality — это system design проблема
+
+Плохие данные → неправильные решения → потеря доверия к data platform. Data quality — не afterthought, а архитектурный слой.
+
+```
+Cost of bad data:
+  Обнаружено в Bronze: $1 (автоматический fix)
+  Обнаружено в Silver: $10 (reprocessing)
+  Обнаружено в Gold: $100 (dashboard downtime)
+  Обнаружено бизнесом: $1000 (потеря доверия)
+  
+→ Shift-left: ловить как можно раньше
+```
+
+## Data Quality Dimensions
+
+<DiagramContainer title="Six Dimensions of Data Quality">
+<Grid columns={3}>
+  <Tooltip content="Freshness — свежесть данных. Самая частая причина жалоб бизнеса. Мониторинг: MAX(event_time) per table. Alert: если данные старше 2x SLA">
+    <DataBox label="Freshness">
+      Данные свежие? Last update ≤ SLA threshold
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Completeness — полнота данных. Все ли записи пришли? Мониторинг: row count ±10% от вчера. NULL ratio по critical columns. Missing partitions">
+    <DataBox label="Completeness">
+      Все данные на месте? Row count ±10% от нормы
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Accuracy — корректность значений. amount ≥ 0, email валиден, country code в справочнике. Shift-left: ловить в Bronze/Silver, не в Gold">
+    <DataBox label="Accuracy">
+      Данные корректные? Values match business rules
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Consistency — согласованность данных между таблицами и системами. SUM(order_items) = order.total. Revenue в DWH = revenue в CRM ±1%">
+    <DataBox label="Consistency">
+      Данные согласованы? Cross-table totals match
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Uniqueness — отсутствие дубликатов. COUNT(DISTINCT id) = COUNT(id). Дубликаты = двойной revenue в отчётах. Причины: retry без idempotency, late-arriving data">
+    <DataBox label="Uniqueness">
+      Нет дубликатов? DISTINCT count = total count
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Schema — структурная валидность. Все expected columns present, types correct, no unexpected columns. Schema drift detection через автоматический profiling">
+    <DataBox label="Schema">
+      Структура верная? Columns, types, constraints valid
+    </DataBox>
+  </Tooltip>
+</Grid>
+<FlowRow>
+  <Tooltip content="Стоимость обнаружения ошибки растёт экспоненциально с каждым слоем: Bronze ($1) → Silver ($10) → Gold ($100) → Бизнес ($1000)">
+    <FlowNode label="Shift-Left: обнаруживай раньше → дешевле чинить" />
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+| Dimension | Что проверяем | Пример проверки |
+|-----------|--------------|-----------------|
+| **Freshness** | Данные свежие? | Last record timestamp не старше 1 часа |
+| **Completeness** | Все данные на месте? | Row count ± 10% от вчера |
+| **Accuracy** | Данные корректные? | amount не отрицательное, email валиден |
+| **Consistency** | Данные согласованы? | SUM(order_items) = order.total |
+| **Uniqueness** | Нет дубликатов? | COUNT(DISTINCT id) = COUNT(id) |
+| **Schema** | Структура верная? | Все expected columns present, types correct |
+
+## Инструменты Data Quality
+
+### Great Expectations
+
+```python
+# Declarative expectations
+expectation_suite = {
+  "expectations": [
+    {"type": "expect_column_to_exist", "column": "order_id"},
+    {"type": "expect_column_values_to_not_be_null", "column": "order_id"},
+    {"type": "expect_column_values_to_be_unique", "column": "order_id"},
+    {"type": "expect_column_values_to_be_between",
+     "column": "amount", "min_value": 0, "max_value": 1000000},
+    {"type": "expect_table_row_count_to_be_between",
+     "min_value": 1000, "max_value": 1000000}
+  ]
+}
+# Run: validator.validate(df, suite) → results + data docs
+```
+
+### dbt Tests
+
+```yaml
+# schema.yml
+models:
+  - name: orders_silver
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - unique
+      - name: amount
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: customer_id
+        tests:
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
+```
+
+## Data Contracts (ODCS)
+
+```yaml
+# Open Data Contract Standard (ODCS)
+dataContract:
+  name: orders
+  version: 2.0.0
+  owner: checkout-team
+  
+  schema:
+    - name: order_id
+      type: string
+      required: true
+      unique: true
+    - name: amount
+      type: decimal
+      required: true
+      constraints:
+        minimum: 0
+    - name: created_at
+      type: timestamp
+      required: true
+
+  sla:
+    freshness: 1h
+    completeness: 99.5%
+    availability: 99.9%
+    
+  consumers:
+    - team: analytics
+      usage: dashboard
+    - team: ml-team  
+      usage: feature-engineering
+```
+
+<Callout type="tip">
+**Data Contracts = API для данных.** Producer гарантирует schema + SLA. Consumer знает, что ожидать. Изменения через versioning, не breaking changes.
+</Callout>
+
+## Observability: Monitoring Pipeline Health
+
+```
+What to monitor:
+  1. Freshness: MAX(event_time) per table, alert if stale
+  2. Volume: row count per partition, alert on anomaly
+  3. Schema: column count, types — alert on drift
+  4. Quality: % rows passing checks, alert below threshold
+  5. Latency: end-to-end pipeline duration
+  6. Cost: compute + storage per pipeline
+
+Alert thresholds:
+  Freshness: table not updated in 2x SLA
+  Volume: ±30% from 7-day moving average
+  Quality: below 99% pass rate on critical checks
+```
+
+### Anomaly Detection
+
+```
+Statistical approaches:
+  Z-score: flag if metric > 3σ from mean
+  Moving average: compare to 7d/30d rolling average
+  Seasonal decomposition: account for day-of-week patterns
+  
+Example:
+  Daily order count: avg=100K, σ=10K
+  Today: 45K orders
+  Z-score: (45K - 100K) / 10K = -5.5 → ALERT
+  
+  But: is it a holiday? Check seasonal pattern first
+```
+
+<Callout type="warning">
+**Anti-pattern: Alert fatigue.** Не ставьте alert на каждую метрику. Tiered alerting: P1 (page on-call) = freshness SLA breach, P2 (Slack) = volume anomaly, P3 (ticket) = schema drift.
+</Callout>
+
+<KnowledgeCheck>
+Data Quality essentials: 6 dimensions (freshness, completeness, accuracy, consistency, uniqueness, schema). Great Expectations = declarative checks. dbt tests = SQL-native quality. Data Contracts (ODCS) = API для данных с SLA. Observability: freshness + volume + schema drift monitoring. Anomaly detection: Z-score с учётом seasonality. Alert fatigue prevention через tiered alerting. В следующем модуле: Orchestration Design.
+</KnowledgeCheck>

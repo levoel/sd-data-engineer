@@ -1,0 +1,183 @@
+---
+title: "Data Warehouse Design для System Design"
+description: "Star Schema, Snowflake Schema, Data Vault — dimensional modeling, fact/dimension tables, SCD types, warehouse vs lakehouse"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 24
+topics: ["Data Warehouse", "Star Schema", "Snowflake Schema", "Data Vault", "Dimensional Modeling", "SCD"]
+---
+
+# Data Warehouse Design для System Design
+
+## Зачем проектировать Warehouse
+
+Data Warehouse — центральное хранилище аналитических данных. Правильный выбор модели определяет производительность запросов, гибкость schema evolution и стоимость поддержки.
+
+## Dimensional Modeling: Fact и Dimension Tables
+
+Dimensional model разделяет данные на два типа таблиц:
+
+```
+Fact Table (события/метрики):
+  - order_id, customer_id, product_id, date_id
+  - amount, quantity, discount
+  - Миллионы/миллиарды строк
+  - Append-only (immutable events)
+
+Dimension Table (контекст):
+  - customer: id, name, email, segment, city
+  - product: id, name, category, brand, price
+  - date: id, date, month, quarter, year, is_holiday
+  - Тысячи/миллионы строк
+  - Slowly changing (SCD)
+```
+
+<DiagramContainer title="Star Schema: Fact + Dimensions" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Dimension: атрибуты клиента для фильтрации и группировки">
+        <DataBox label="dim_customer" className="border-blue-500/30 w-40">
+          <div className="text-xs space-y-1">
+            <div>customer_id (PK)</div>
+            <div>name, segment</div>
+            <div>city, country</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Dimension: временные атрибуты для time-series анализа">
+        <DataBox label="dim_date" className="border-blue-500/30 w-40">
+          <div className="text-xs space-y-1">
+            <div>date_id (PK)</div>
+            <div>date, month, quarter</div>
+            <div>year, is_holiday</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <div className="flex justify-center">
+      <Tooltip content="Fact: центральная таблица с метриками и FK к dimensions">
+        <DataBox label="fact_orders" className="border-orange-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>order_id (PK)</div>
+            <div>customer_id (FK), product_id (FK)</div>
+            <div>date_id (FK), store_id (FK)</div>
+            <div className="text-emerald-400">amount, quantity, discount</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="up" />
+      <Arrow direction="up" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="dim_product" className="border-blue-500/30 w-40">
+        <div className="text-xs space-y-1">
+          <div>product_id (PK)</div>
+          <div>name, category</div>
+          <div>brand, price</div>
+        </div>
+      </DataBox>
+      <DataBox label="dim_store" className="border-blue-500/30 w-40">
+        <div className="text-xs space-y-1">
+          <div>store_id (PK)</div>
+          <div>store_name, city</div>
+          <div>region, manager</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Star vs Snowflake vs Data Vault
+
+### Star Schema
+
+Dimensions денормализованы — один уровень JOIN от fact:
+
+```
+SELECT d.segment, SUM(f.amount)
+FROM fact_orders f
+JOIN dim_customer d ON f.customer_id = d.customer_id
+GROUP BY d.segment
+-- Один JOIN, максимальная скорость
+```
+
+### Snowflake Schema
+
+Dimensions нормализованы — несколько уровней:
+
+```
+dim_customer → dim_city → dim_country
+-- Экономит storage, но запросы сложнее и медленнее
+-- Используется редко в modern warehouses
+```
+
+### Data Vault
+
+Разделяет на **Hubs** (бизнес-ключи), **Links** (связи), **Satellites** (атрибуты с историей):
+
+```
+Hub_Customer: hash_key, business_key, load_date
+Sat_Customer: hash_key, name, email, load_date, source
+Link_Order_Customer: hash_key, hub_order_key, hub_customer_key
+-- Максимальная гибкость, сложная реализация
+-- Подходит для enterprise с множеством источников
+```
+
+| Модель | Joins | Гибкость | Сложность | Use Case |
+|--------|-------|----------|-----------|----------|
+| **Star** | 1 уровень | Средняя | Низкая | BI, аналитика (90% случаев) |
+| **Snowflake** | N уровней | Средняя | Средняя | Экономия storage |
+| **Data Vault** | Через Hubs/Links | Высокая | Высокая | Enterprise, множество sources |
+
+## SCD — Slowly Changing Dimensions
+
+Как обрабатывать изменения в dimension tables:
+
+| SCD Type | Стратегия | История | Пример |
+|----------|-----------|---------|--------|
+| **Type 0** | Не обновлять | Нет | Дата рождения |
+| **Type 1** | Overwrite | Нет | Исправление опечатки |
+| **Type 2** | Новая строка + valid_from/to | Полная | Смена города клиента |
+| **Type 3** | Доп. колонка (prev_value) | Частичная | current_city + previous_city |
+
+```
+SCD Type 2 — самый распространённый:
+
+customer_id | name  | city     | valid_from | valid_to   | is_current
+1           | Иван  | Москва   | 2023-01-01 | 2024-06-15 | false
+1           | Иван  | Казань   | 2024-06-15 | 9999-12-31 | true
+
+JOIN fact → dimension по date range для historical accuracy
+```
+
+## Warehouse vs Lakehouse — когда что
+
+```
+Warehouse (BigQuery, Snowflake, Redshift):
+  [OK] SQL-first, BI оптимизирован
+  [OK] Managed, auto-scaling
+  [OK] Structured data only
+  [NO] Дорого при TB+ scale
+  [NO] Vendor lock-in
+
+Lakehouse (Databricks, Delta/Iceberg + Spark):
+  [OK] Open formats, no lock-in
+  [OK] ML + SQL на одних данных
+  [OK] Semi-structured data
+  [NO] Больше operational overhead
+  [NO] Оптимизация требует экспертизы
+```
+
+<Callout type="tip">
+**Правило выбора:** Если 90%+ workload — SQL аналитика и BI → warehouse. Если есть ML, data science, streaming или unstructured data → lakehouse. Гибридный вариант: lakehouse для raw/staging + warehouse для serving layer.
+</Callout>
+
+<KnowledgeCheck>
+Warehouse design essentials: Star Schema = default для аналитики (1 JOIN). Snowflake = нормализованные dimensions. Data Vault = enterprise с множеством sources. SCD Type 2 = полная история через valid_from/to. Warehouse vs Lakehouse = SQL-first vs flexibility. В следующем модуле: Data Lakehouse Architecture.
+</KnowledgeCheck>

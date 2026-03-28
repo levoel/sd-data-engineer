@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "04-stream-processing/02-flink-watermarks-windows",
+  "moduleId": "04-stream-processing",
+  "_meta": {
+    "idPrefix": "sdde-m04-02"
+  },
+  "questions": [
+    {
+      "id": "sdde-m04-02-q1",
+      "type": "multiple-choice",
+      "question": "Event произошёл в 10:00:00 (event_time), но прибыл в Flink в 10:00:15 (processing_time). Tumbling window [10:00-10:01]. Какое time semantics корректно включит event в окно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Processing time — event обработан в 10:00:15, попадёт в [10:00-10:01]"
+        },
+        {
+          "id": "b",
+          "text": "Оба дадут одинаковый результат"
+        },
+        {
+          "id": "c",
+          "text": "Event time — event произошёл в 10:00:00, попадёт в [10:00-10:01] независимо от задержки. Processing time зависит от network delays и может быть unreliable"
+        },
+        {
+          "id": "d",
+          "text": "Event time не поддерживается в Flink"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Event time = when event happened (embedded in data). Processing time = when system processes it (variable due to delays). For analytics: always event time. If event arrived at 10:05:00 (extreme delay), processing time would put it in [10:05-10:06] window → WRONG. Event time correctly puts it in [10:00-10:01].",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m04-02-q2",
+      "type": "multiple-choice",
+      "question": "Flink job с checkpoint interval = 60 sec. Job crashes после 45 sec of processing. Сколько данных будет reprocessed при recovery?",
+      "options": [
+        {
+          "id": "a",
+          "text": "0 — Flink не теряет данные"
+        },
+        {
+          "id": "b",
+          "text": "60 секунд ровно"
+        },
+        {
+          "id": "c",
+          "text": "Все данные с начала job"
+        },
+        {
+          "id": "d",
+          "text": "~45 секунд данных: recovery восстанавливает state от последнего checkpoint (60 sec ago) и replays ~45 sec of events from Kafka offsets"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Checkpoint saves state + Kafka offsets every 60 sec. Crash after 45 sec → restore last checkpoint (state as of 45 sec ago). Replay ~45 sec of events from Kafka (idempotent processing). Result: exactly-once semantics preserved. Trade-off: more frequent checkpoints = less reprocessing but more overhead.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

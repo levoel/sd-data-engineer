@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "11-governance/_exam",
+  "moduleId": "11-governance",
+  "examTitle": "Экзамен: Governance, Cataloging & Lineage",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m11-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m11-exam-q1",
+      "type": "multiple-choice",
+      "question": "Аналитик запрашивает доступ к таблице customers (содержит email, phone, address). Роль: analyst. Как настроить access control?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Дать полный доступ — аналитику нужны данные"
+        },
+        {
+          "id": "b",
+          "text": "Запретить доступ полностью — PII risk"
+        },
+        {
+          "id": "c",
+          "text": "Column-level access: analyst видит customer_id, name, segment, city — но НЕ email, phone, address (PII). RBAC: role=analyst → GRANT SELECT на non-PII columns. PII columns доступны только role=data_engineer с approval workflow"
+        },
+        {
+          "id": "d",
+          "text": "Создать отдельную таблицу без PII"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите разделы Access Control и PII Handling",
+      "explanation": "Column-level RBAC: минимальные привилегии. Analyst получает business-relevant columns без PII. PII masking: email → SHA256(email) если нужен join key. Отдельная таблица (d) — viable, но column-level access масштабируется лучше (одна таблица, разные views per role).",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m11-exam-q2",
+      "type": "multiple-choice",
+      "question": "Data platform растёт: 500 таблиц, 10 команд. Аналитики не могут найти нужные данные, документация устарела. Что внедрить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Shared Google Doc со списком таблиц"
+        },
+        {
+          "id": "b",
+          "text": "Slack channel для вопросов"
+        },
+        {
+          "id": "c",
+          "text": "Wiki страница с описанием каждой таблицы"
+        },
+        {
+          "id": "d",
+          "text": "Data Catalog (OpenMetadata): auto-discovery connectors для всех sources (Iceberg, Kafka, dbt). Auto-generated documentation + column descriptions. Search + tagging. Data stewards per domain. Lineage автоматически из SQL parsing"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Data Catalog",
+      "explanation": "Data Catalog = searchable, auto-updated registry. Auto-discovery: crawl databases/lakes → detect new tables. Auto-lineage: parse dbt SQL → column-level dependencies. Collaboration: inline discussions, data quality badges. Google Doc/Wiki (a, c) → outdated in weeks. Catalog stays current automatically.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m11-exam-q3",
+      "type": "multiple-choice",
+      "question": "Дата-инженер обнаружил: Gold таблица monthly_revenue показывает $2M вместо ожидаемых $5M. Нужно найти root cause. Какой инструмент governance поможет быстрее всего?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Data Catalog — поиск по документации"
+        },
+        {
+          "id": "b",
+          "text": "Access Control logs — кто менял данные"
+        },
+        {
+          "id": "c",
+          "text": "Column-level lineage: трассировка monthly_revenue.amount → upstream transformations → Silver tables → Bronze → source. Найти точку где данные расходятся. Автоматическая lineage из dbt + SQL parsing. Impact: за минуты вместо часов ручного расследования"
+        },
+        {
+          "id": "d",
+          "text": "Запросить source систему напрямую"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Data Lineage — Column-level Tracing",
+      "explanation": "Column-level lineage: trace monthly_revenue.amount через все transformations. Визуализация: Gold ← Silver ← Bronze ← Source. На каждом уровне можно проверить значения. Быстро локализовать: если Bronze корректен, проблема в transformation. Data catalog (a) — для discovery, не debugging. Lineage = debugging tool для data pipelines.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m11-exam-q4",
+      "type": "multiple-choice",
+      "question": "Компания работает с данными клиентов из EU. GDPR запрос: клиент требует удалить все свои данные. Data platform: 30 таблиц содержат customer PII в Bronze, Silver, Gold layers. Как реализовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить записи вручную из каждой таблицы"
+        },
+        {
+          "id": "b",
+          "text": "Пометить клиента как 'deleted' но данные оставить"
+        },
+        {
+          "id": "c",
+          "text": "Удалить только из Gold — аналитики работают только с ним"
+        },
+        {
+          "id": "d",
+          "text": "Automated GDPR pipeline: 1) Lineage graph → найти все таблицы с customer PII (auto-tagged через data catalog), 2) Cryptographic erasure: PII зашифрован key-per-customer, удалить ключ = данные нечитаемы, 3) Audit log: подтверждение удаления для compliance, 4) Periodic: re-run downstream для propagation"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел GDPR Compliance и Cryptographic Erasure",
+      "explanation": "Cryptographic erasure: PII encrypted с per-customer key. 'Удаление' = destroy key → data irreversible. Преимущества: не нужно физически удалять из каждой таблицы (Bronze immutable!). Lineage-based discovery: data catalog tags PII columns → автоматически найти все 30 таблиц. Audit trail: GDPR требует proof of deletion. Manual (a) — error-prone на 30 tables.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

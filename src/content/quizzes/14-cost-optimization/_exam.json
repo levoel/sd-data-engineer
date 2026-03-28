@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "14-cost-optimization/_exam",
+  "moduleId": "14-cost-optimization",
+  "examTitle": "Экзамен: Cost Optimization & Tuning",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m14-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m14-exam-q1",
+      "type": "multiple-choice",
+      "question": "Spark cluster: 50 executors × 16 GB RAM. CloudWatch показывает: avg CPU = 25%, avg memory = 35%. Pipeline runs 4 hours daily. Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить cluster для ускорения"
+        },
+        {
+          "id": "b",
+          "text": "Добавить SSD storage"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на GPU instances"
+        },
+        {
+          "id": "d",
+          "text": "Right-sizing: 1) CPU 25% → switch to smaller instance (m5.xlarge → m5.large), 2) Memory 35% → reduce executor memory (16 GB → 10 GB), 3) Reduce executors (50 → 25) + enable dynamic allocation. Expected: 50-60% cost reduction, similar runtime with proper partitioning"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Compute Right-sizing",
+      "explanation": "Over-provisioned cluster: 25% CPU + 35% memory = 60-75% waste. Right-sizing: match instance to actual utilization. Dynamic allocation: scale executors up/down per stage. ARM instances (Graviton): 20% cheaper, same perf. Result: 50-60% cost savings without performance impact.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m14-exam-q2",
+      "type": "multiple-choice",
+      "question": "Data platform: monthly cloud bill = $50K. CTO: 'Оптимизируйте до $30K'. Нет visibility в cost breakdown. Первый шаг?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Cost visibility: настроить AWS Cost Explorer / GCP Billing с breakdown по team, pipeline, layer. Tagging strategy: каждый ресурс tagged (team, pipeline, environment). Определить top-5 cost drivers → оптимизировать по приоритету. Нельзя оптимизировать то, что не измерено"
+        },
+        {
+          "id": "b",
+          "text": "Сразу удалить все non-production environments"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на on-premise"
+        },
+        {
+          "id": "d",
+          "text": "Уменьшить retention до 7 дней для всех данных"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел о мониторинге cost",
+      "explanation": "Step 1: measure. Cost visibility → understand WHERE money goes. Typical findings: 60% compute (over-provisioned), 25% storage (no lifecycle), 15% network (cross-region). Tagging → attributable costs per team/pipeline. Top-5 optimization → achievable 30-40% reduction. Without visibility → random cuts that may break production.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m14-exam-q3",
+      "type": "multiple-choice",
+      "question": "Kafka cluster: 3 brokers, 500 topics, retention = 30 days для всех. Storage: 20 TB. 60% трафика — low-priority debug logs. Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить debug log topics"
+        },
+        {
+          "id": "b",
+          "text": "Перейти на Pulsar"
+        },
+        {
+          "id": "c",
+          "text": "Tiered retention: critical topics (orders, payments) — 30 days. Analytics events — 7 days. Debug logs — 24 hours (или tiered storage: hot 24h → S3 cold 30d). Compression: enable zstd (30-50% size reduction). Результат: 20 TB → ~8 TB active storage"
+        },
+        {
+          "id": "d",
+          "text": "Добавить больше brokers"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел Kafka Cost Optimization — Retention и Tiered Storage",
+      "explanation": "Per-topic retention: match retention to business value. Debug logs (60% traffic) с 30d retention = waste. 24h retention для debug: 12 TB → 400 GB. Tiered storage (KIP-405): hot data на broker disks, cold → S3 (10x cheaper). zstd compression: 30-50% reduction. Combined: significant storage savings без потери critical data. Удалить topics (c) — потеря debug capability. Pulsar (b) — migration cost, не решает retention problem.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m14-exam-q4",
+      "type": "multiple-choice",
+      "question": "Snowflake bill: $20K/month. Query profile: 70% — scheduled dbt jobs (warehouse XL), 30% — ad-hoc analyst queries (warehouse XL). Оптимизация?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Перейти на BigQuery"
+        },
+        {
+          "id": "b",
+          "text": "Multi-warehouse strategy: dbt jobs → dedicated warehouse (size M, auto-suspend 1 min, scheduled scale-up during batch window). Ad-hoc → separate warehouse (size S, auto-suspend 5 min). Кластеризация: cluster key на часто фильтруемых колонках. Result caching: повторяющиеся queries бесплатны"
+        },
+        {
+          "id": "c",
+          "text": "Один warehouse Large для всего"
+        },
+        {
+          "id": "d",
+          "text": "Запретить ad-hoc queries"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Cloud Warehouse Cost Optimization — Multi-cluster Strategy",
+      "explanation": "Multi-warehouse isolation: dbt batch (predictable, can right-size) vs ad-hoc (variable, smaller sufficient). XL for both = over-provisioned для ad-hoc. Auto-suspend: minimize idle compute. Clustering: reduce scan volume → lower credits. Result cache: exact same query = 0 credits. Expected savings: 30-40% от $20K.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

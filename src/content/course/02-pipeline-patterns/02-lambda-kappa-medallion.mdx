@@ -1,0 +1,197 @@
+---
+title: "Lambda, Kappa и Medallion Architecture"
+description: "Три ключевых архитектурных паттерна для data pipeline систем: когда какой использовать"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Lambda Architecture", "Kappa Architecture", "Medallion", "Bronze Silver Gold"]
+---
+
+# Lambda, Kappa и Medallion Architecture
+
+## Lambda Architecture: Batch + Stream
+
+<DiagramContainer title="Lambda Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Данные поступают из источников и разделяются на два пути">
+        <FlowNode variant="input"><Icon name="layers" className="text-blue-400" size="1.2em" /> Data Sources</FlowNode>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-6 justify-center">
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Batch Layer: полная обработка всех данных (Spark). Точная, но медленная.">
+          <DataBox label="Batch Layer" className="border-blue-500/30 w-44">
+            <div className="text-xs">Spark batch jobs</div>
+            <div className="text-[10px] text-slate-400">Точно, но часы задержки</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Speed Layer: real-time обработка потока (Flink). Быстрая, но approximate.">
+          <DataBox label="Speed Layer" className="border-emerald-500/30 w-44">
+            <div className="text-xs">Kafka + Flink streaming</div>
+            <div className="text-[10px] text-slate-400">Быстро, но approximate</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+    </FlowRow>
+    <div className="flex justify-center">
+      <Arrow direction="down" />
+    </div>
+    <Tooltip content="Serving Layer: объединяет batch (точные) и speed (свежие) результаты">
+      <DataBox label="Serving Layer" className="border-purple-500/30 w-64 mx-auto">
+        <div className="text-xs">Query = merge(batch_result, speed_result)</div>
+      </DataBox>
+    </Tooltip>
+  </FlowColumn>
+</DiagramContainer>
+
+### Проблема Lambda
+
+```
+[NO] Lambda downsides:
+  - Два стека кода (batch + stream) для одной логики
+  - Синхронизация результатов (serving merge) — сложно
+  - Двойное тестирование, двойной debugging
+  - Команда должна знать и Spark, и Flink
+```
+
+## Kappa Architecture: Stream-Only
+
+Jay Kreps (Confluent/Kafka) предложил Kappa: **всё через stream**:
+
+<DiagramContainer title="Kappa Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <Tooltip content="Все данные как поток событий (Kafka as source of truth)">
+      <FlowNode variant="input"><Icon name="layers" className="text-blue-400" size="1.2em" /> Event Stream (Kafka)</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Единый stream processing layer обрабатывает всё">
+      <DataBox label="Stream Processing (единственный)" className="border-emerald-500/30 w-64 mx-auto">
+        <div className="text-xs">Kafka Streams / Flink / ksqlDB</div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Результаты доступны с минимальной задержкой">
+      <FlowNode variant="output"><Icon name="code" className="text-blue-400" size="1.2em" /> Serving Layer</FlowNode>
+    </Tooltip>
+  </FlowColumn>
+</DiagramContainer>
+
+```
+[OK] Kappa advantages:
+  - Один стек кода
+  - Simpler architecture
+  - Replay: перечитать Kafka topic для reprocessing
+
+[NO] Kappa limitations:
+  - Не всё естественно выражается как stream
+  - Heavy aggregations (yearly reports) дороже в streaming
+  - Backfill сложен (replay all history)
+```
+
+## Medallion Architecture: Bronze → Silver → Gold
+
+Medallion (multi-hop) — **доминирующий паттерн** для lakehouse:
+
+<DiagramContainer title="Medallion Architecture: Bronze → Silver → Gold" className="my-6">
+  <FlowRow className="p-4 gap-2 flex-wrap justify-center">
+    <Tooltip content="Bronze: raw данные as-is из источников. Append-only, immutable.">
+      <DataBox label="Bronze (Raw)" className="border-orange-500/30 w-44">
+        <div className="text-xs space-y-1">
+          <div>Raw data as-is</div>
+          <div>Append-only</div>
+          <div>Schema-on-read</div>
+          <div className="text-orange-400">Partition: ingestion_date</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Silver: очищенные данные. Дедупликация, типизация, validation.">
+      <DataBox label="Silver (Cleaned)" className="border-slate-400/30 w-44">
+        <div className="text-xs space-y-1">
+          <div>Cleaned, validated</div>
+          <div>Deduplicated</div>
+          <div>Typed, conformed</div>
+          <div className="text-slate-400">Partition: event_date</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Gold: business-level aggregations. Star schema для BI, feature tables для ML.">
+      <DataBox label="Gold (Business)" className="border-yellow-500/30 w-44">
+        <div className="text-xs space-y-1">
+          <div>Business aggregations</div>
+          <div>Star schema</div>
+          <div>Feature tables</div>
+          <div className="text-yellow-400">Optimized for queries</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+### Medallion Rules
+
+```
+Bronze Layer Rules:
+  - Store raw data exactly as received
+  - Never modify — append only
+  - Partition by ingestion timestamp
+  - Keep forever (or long retention) — source of truth for replay
+  - Schema: flexible (JSON, raw Parquet)
+
+Silver Layer Rules:
+  - Clean: remove duplicates, fix types, handle nulls
+  - Validate: schema enforcement, data quality checks
+  - Conform: standardize formats (dates, currencies, names)
+  - Partition by business date (event_date, not ingestion_date)
+  - SCD Type 2 for slowly changing dimensions
+
+Gold Layer Rules:
+  - Business-level aggregations (revenue, KPIs, metrics)
+  - Star schema for BI tools (fact + dimension tables)
+  - Feature tables for ML
+  - Pre-computed, optimized for read performance
+  - Partitioned/clustered for common query patterns
+```
+
+## Когда какой паттерн
+
+| Паттерн | Когда использовать | Когда НЕ использовать |
+|---------|-------------------|---------------------|
+| **Lambda** | Real-time + batch с разными SLA | Маленькая команда (too complex) |
+| **Kappa** | Всё event-driven, stream-first | Heavy batch aggregations |
+| **Medallion** | Lakehouse, progressive quality | Simple single-table pipeline |
+| **ELT + dbt** | DWH-centric, SQL transforms | Streaming workloads |
+
+<Callout type="tip">
+**Современный default: Medallion + ELT**
+
+Medallion architecture (Bronze/Silver/Gold) в Lakehouse (Delta/Iceberg) с dbt для Silver→Gold transforms — доминирующий паттерн. Lambda уходит (too complex). Kappa — для streaming-native companies (Confluent, Uber).
+</Callout>
+
+## Data Mesh: организационный паттерн
+
+Data Mesh — не техническая архитектура, а **организационный** подход:
+
+```
+Data Mesh principles:
+1. Domain ownership: каждая команда владеет своими данными
+2. Data as product: данные = продукт с SLA, docs, quality
+3. Self-serve platform: общая инфраструктура для всех доменов
+4. Federated governance: общие стандарты, domain-specific решения
+```
+
+<Callout type="warning">
+**Data Mesh ≠ техническое решение**
+
+Data Mesh — про организацию, не про инструменты. Можно использовать Medallion architecture внутри каждого domain. Data Mesh решает проблему "one central data team" → "domain teams own their data products".
+</Callout>
+
+<KnowledgeCheck>
+Lambda (batch+stream), Kappa (stream-only), Medallion (Bronze→Silver→Gold) — три подхода к pipeline architecture. Medallion доминирует в современных архитектурах. Data Mesh — организационный паттерн поверх любой технической архитектуры. В следующем уроке: Reverse ETL и event-driven patterns.
+</KnowledgeCheck>

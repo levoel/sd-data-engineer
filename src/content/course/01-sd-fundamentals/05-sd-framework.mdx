@@ -1,0 +1,193 @@
+---
+title: "7-Step Data Engineering SD Framework"
+description: "Пошаговый подход к решению system design задач для data engineering"
+order: 5
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["Framework", "System Design Interview", "Step-by-step", "Data Architecture"]
+---
+
+
+# 7-Step Data Engineering SD Framework
+
+## Зачем Framework
+
+System Design задачи для DE намеренно расплывчаты: «Спроектируйте data pipeline для e-commerce». Без структурированного подхода легко потеряться в деталях или пропустить целые слои. Framework даёт **скелет**, который вы наполняете конкретикой.
+
+## 7 шагов
+
+<DiagramContainer title="7-Step DE System Design Framework" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <Tooltip content="Кто использует данные? Для чего? Какие вопросы отвечает система?">
+      <FlowNode variant="input">1. Understand Consumers & Use Cases</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Volume, velocity, variety, freshness SLA, quality requirements, budget">
+      <FlowNode variant="process">2. Define Constraints & NFRs</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Batch vs Stream vs Hybrid? ETL vs ELT? Lambda vs Kappa vs Medallion?">
+      <FlowNode variant="process">3. Choose Processing Model</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Sources → Ingestion → Processing → Storage → Serving">
+      <FlowNode variant="process">4. Design Data Flow</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Star schema? Denormalized? Medallion (Bronze/Silver/Gold)? SCD strategy?">
+      <FlowNode variant="process">5. Define Data Model</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Monitoring, alerting, data quality checks, SLA tracking, lineage">
+      <FlowNode variant="process">6. Add Operational Layer</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Scaling strategy, cost optimization, failure recovery, security">
+      <FlowNode variant="output">7. Address Scale & Reliability</FlowNode>
+    </Tooltip>
+  </FlowColumn>
+</DiagramContainer>
+
+## Шаг 1: Consumers & Use Cases
+
+**Начинайте с конца.** Кто использует данные и для чего?
+
+```
+Вопросы:
+- Кто основные потребители? (аналитики, ML, сервисы, dashboards)
+- Какие конкретные вопросы они задают? ("Выручка за вчера по регионам")
+- В каком формате им нужны данные? (SQL table, API, файл)
+- Как часто обращаются? (ad-hoc SQL, scheduled report, real-time feed)
+```
+
+## Шаг 2: Constraints & NFRs
+
+**Определите ограничения** — они определяют архитектуру:
+
+| Constraint | Влияние на архитектуру |
+|-----------|----------------------|
+| Volume: 100 GB/день | Spark/Flink обязательны, PostgreSQL не справится |
+| Freshness: < 5 мин | Streaming обязателен |
+| Budget: $5K/мес | Managed services, не self-hosted Hadoop |
+| Compliance: GDPR | PII masking, audit log, right-to-delete |
+| Team: 2 DE | Простые tools, минимум ops overhead |
+
+## Шаг 3: Processing Model
+
+На основе constraints выберите модель:
+
+| Если... | Тогда... |
+|---------|----------|
+| Freshness > 1 час, volume < 1 TB | Batch (Spark / dbt + warehouse) |
+| Freshness < 5 мин | Streaming (Kafka + Flink) |
+| Разные SLA для разных use cases | Hybrid (batch + stream) |
+| Простой ETL, < 100 GB | dbt + cron (no Spark needed) |
+
+## Шаг 4: Data Flow
+
+Нарисуйте поток данных от source к consumer:
+
+```
+Типичный data flow:
+
+Sources → Ingestion → Raw Storage → Processing → Curated Storage → Serving
+         (CDC/API)   (Bronze)      (Spark/dbt)    (Silver/Gold)   (BI/ML)
+```
+
+Для каждого компонента определите:
+- **Какой инструмент** (Kafka, Fivetran, Spark, dbt, Trino)
+- **Какой формат данных** (Parquet, Avro, JSON)
+- **Какие гарантии** (at-least-once, exactly-once)
+
+## Шаг 5: Data Model
+
+Определите **как организовать данные** в storage:
+
+### Medallion Architecture
+
+```
+Bronze (raw):
+  - Данные as-is из источников
+  - Append-only, immutable
+  - Partitioned by ingestion_date
+
+Silver (cleaned):
+  - Дедупликация, типизация, validation
+  - SCD Type 2 для dimensions
+  - Partitioned by event_date
+
+Gold (aggregated):
+  - Business-level aggregations
+  - Star schema для BI
+  - Pre-computed metrics
+```
+
+## Шаг 6: Operational Layer
+
+Добавьте observability:
+
+- **Monitoring**: pipeline duration, record count, lag
+- **Data Quality**: null %, duplicate %, schema drift
+- **Alerting**: SLA breach, quality degradation, pipeline failure
+- **Lineage**: откуда пришли данные → какие таблицы затронуты
+- **Cataloging**: что каждый dataset значит, кто owner
+
+## Шаг 7: Scale & Reliability
+
+Ответьте на вопросы масштабирования:
+
+```
+- Что если volume вырастет в 10x? (partitioning strategy)
+- Что если source недоступен? (retry, dead letter queue)
+- Что если pipeline упал в середине? (idempotency, checkpointing)
+- Что если данные пришли late? (watermark, late data handling)
+- Как оптимизировать стоимость? (spot instances, auto-scaling, compression)
+```
+
+## Пример: Полный walkthrough
+
+> Задача: спроектируйте clickstream analytics pipeline.
+
+### Step 1: Consumers
+- Product team: воронки конверсии (SQL, daily)
+- ML team: recommendation features (feature store, hourly)
+- Operations: real-time dashboard (< 1 мин latency)
+
+### Step 2: Constraints
+- Volume: 100M events/день (~50 GB raw)
+- Freshness: 1 мин для dashboard, 1 час для ML, 1 день для product
+- Budget: $10K/мес cloud
+- Team: 3 DE
+
+### Step 3: Processing Model
+- **Hybrid**: streaming для real-time dashboard, micro-batch для ML features, daily batch для product
+
+### Step 4: Data Flow
+```
+Web/Mobile → Event Collector → Kafka → Flink (real-time) → Redis (dashboard)
+                                 ↓
+                          Spark (micro-batch, hourly) → Lakehouse (Bronze→Silver→Gold)
+                                                            ↓
+                                                      dbt (daily) → Star Schema → BI
+                                                            ↓
+                                                      Feature Store → ML
+```
+
+### Step 5: Data Model
+- Bronze: raw JSON events, partitioned by `date_hour`
+- Silver: cleaned events, typed, deduplicated
+- Gold: `fact_pageviews`, `fact_conversions`, `dim_users`, `dim_products`
+
+### Step 6: Operations
+- Monitoring: Kafka lag, Spark job duration, record counts
+- Quality: event schema validation, null check, duplicate detection
+- SLA: dashboard < 1 мин, ML features < 1 час, reports by 08:00
+
+### Step 7: Scale
+- Kafka: partition by `user_id % N`, scale consumers horizontally
+- Spark: auto-scaling cluster, use spot instances for batch
+- Storage: tiered (hot → warm → cold) with lifecycle policies
+
+<KnowledgeCheck>
+Этот 7-step framework будет применяться в каждом последующем модуле. Pipeline Patterns, Batch Processing, Streaming — всё строится на этой базе. Попробуйте применить framework к своему текущему проекту прежде, чем переходить к следующему модулю.
+</KnowledgeCheck>

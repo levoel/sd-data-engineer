@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "07-data-modeling/01-data-modeling",
+  "moduleId": "07-data-modeling",
+  "_meta": {
+    "idPrefix": "sdde-m07-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m07-01-q1",
+      "type": "multiple-choice",
+      "question": "BI-команда запрашивает OBT (One Big Table) для всех данных. 200 source таблиц, частые schema changes. Ваша рекомендация?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Создать OBT из 200 таблиц — BI-команда просит"
+        },
+        {
+          "id": "b",
+          "text": "Отказаться от аналитики — слишком сложно"
+        },
+        {
+          "id": "c",
+          "text": "Полностью нормализовать все 200 таблиц"
+        },
+        {
+          "id": "d",
+          "text": "Star Schema как base model + OBT как materialized view для конкретных dashboard-ов. OBT из 200 таблиц = rebuild при любом schema change, неуправляемо. Star Schema даёт гибкость, OBT — перформанс для hot paths"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Star Schema = flexible base. OBT = cache для specific use cases. 200 таблиц в одной OBT: 1) schema change в любой → rebuild всей OBT, 2) 200+ columns = unmanageable, 3) storage cost explosion. Star Schema + targeted OBTs = лучший баланс flexibility vs performance.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m07-01-q2",
+      "type": "multiple-choice",
+      "question": "Нужно добавить колонку discount_amount в fact_orders (1B rows, Iceberg). Как безопасно провести schema evolution?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ALTER TABLE ADD COLUMN discount_amount DOUBLE (nullable). Старые файлы: NULL (Iceberg читает без rewrite). Новые записи: populate. Dual-write period → migrate consumers → backfill if needed"
+        },
+        {
+          "id": "b",
+          "text": "DROP TABLE → CREATE TABLE с новой колонкой → full reload"
+        },
+        {
+          "id": "c",
+          "text": "Создать новую таблицу fact_orders_v2, скопировать данные"
+        },
+        {
+          "id": "d",
+          "text": "Добавить колонку через JSON string column"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Iceberg schema evolution: ADD COLUMN = metadata-only операция, zero rewrite. Старые Parquet файлы читаются без новой колонки (NULL default). Новые записи пишутся с discount_amount. Consumers обновляются постепенно. Backfill исторических данных — optional, по необходимости.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

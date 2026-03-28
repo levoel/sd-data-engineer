@@ -1,0 +1,181 @@
+---
+title: "Stream Processing: Flink, Watermarks, Windows"
+description: "Apache Flink architecture, event time vs processing time, watermarks, и windowing strategies"
+order: 2
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["Flink", "Watermarks", "Windows", "Event Time", "Late Data", "Checkpointing"]
+---
+
+# Stream Processing: Flink и паттерны
+
+## Flink Architecture
+
+<DiagramContainer title="Flink: JobManager + TaskManagers" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <Tooltip content="JobManager: координатор. Планирует execution graph, управляет checkpoints.">
+      <DataBox label="JobManager" className="border-blue-500/30 w-56 mx-auto">
+        <div className="text-xs">Scheduling, checkpointing, recovery</div>
+      </DataBox>
+    </Tooltip>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="TaskManager: worker. Выполняет operator tasks.">
+        <DataBox label="TM 1" className="border-emerald-500/30 w-28">
+          <div className="text-[10px]">source → map</div>
+        </DataBox>
+      </Tooltip>
+      <DataBox label="TM 2" className="border-emerald-500/30 w-28">
+        <div className="text-[10px]">keyBy → window</div>
+      </DataBox>
+      <DataBox label="TM 3" className="border-emerald-500/30 w-28">
+        <div className="text-[10px]">aggregate → sink</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Event Time vs Processing Time
+
+```
+Event Time: когда СОБЫТИЕ произошло (timestamp в данных)
+Processing Time: когда СИСТЕМА обработала событие
+
+Проблема:
+  Event happened at 10:00:00 (event time)
+  Arrived at system at 10:00:05 (5 sec network delay)
+  Processed at 10:00:07 (2 sec queue wait)
+  
+  Processing time window [10:00:00, 10:01:00] would MISS this event!
+  Event time window [10:00:00, 10:01:00] correctly includes it [OK]
+```
+
+<Callout type="tip">
+**Always use Event Time for analytics**
+
+Processing time windows are unreliable: network delays, reprocessing, consumer lag → events in wrong windows. Event time + watermarks = correct results regardless of processing delays.
+</Callout>
+
+## Watermarks: когда окно «закрыто»
+
+**Проблема:** Как Flink знает, что все events для window [10:00-10:01] прибыли?
+
+**Решение:** Watermark — assertion «все events с timestamp ≤ W уже прибыли»:
+
+```
+Watermark progression:
+  t=10:00:03 → watermark = 10:00:00 (3 sec behind)
+  t=10:00:08 → watermark = 10:00:05
+  t=10:00:15 → watermark = 10:00:12
+  
+  Window [10:00:00, 10:01:00] fires when watermark ≥ 10:01:00
+  
+  Allowed lateness: events arriving after watermark
+    → side output (late data handling)
+    → or update result (accumulating mode)
+```
+
+## Windowing Strategies
+
+<DiagramContainer title="Window Types" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Tumbling: фиксированные не-перекрывающиеся окна">
+      <DataBox label="Tumbling Window" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>[00:00-01:00] [01:00-02:00] [02:00-03:00]</div>
+          <div className="text-blue-400">Каждое event в одном окне</div>
+          <div className="text-slate-400">Use: hourly aggregations</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Sliding: перекрывающиеся окна с шагом slide">
+      <DataBox label="Sliding Window" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>[00:00-01:00] [00:30-01:30] [01:00-02:00]</div>
+          <div className="text-emerald-400">Event может быть в нескольких</div>
+          <div className="text-slate-400">Use: moving averages</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Session: окна по активности с gap timeout">
+      <DataBox label="Session Window" className="border-purple-500/30">
+        <div className="text-xs space-y-1">
+          <div>[click, click, click] gap [click, click]</div>
+          <div className="text-purple-400">Gap timeout = window boundary</div>
+          <div className="text-slate-400">Use: user sessions</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Checkpointing: exactly-once в Flink
+
+```
+Flink Checkpointing:
+  1. Barrier injected into stream (by JobManager)
+  2. Each operator saves state to durable storage (S3, HDFS)
+  3. On failure: restore from last checkpoint
+  4. Resume processing from checkpoint offset
+  
+  Result: exactly-once processing (state + output consistent)
+  
+  Config:
+    checkpoint_interval = 60 sec (balance: frequent = more overhead, rare = more reprocessing)
+    checkpoint_timeout = 120 sec
+    min_pause = 30 sec
+```
+
+## Streaming Design Patterns
+
+### Pattern 1: Enrichment (stream + lookup)
+
+```
+Stream: order events (user_id, product_id, amount)
+Lookup: user dimension table (user_id → name, segment, country)
+
+Enriched: order + user name, segment, country
+
+Approaches:
+  a) Broadcast state: load small lookup table into each task (< 1 GB)
+  b) Async I/O: query external DB per event (adds latency)
+  c) Temporal join: join stream with versioned table (time-aware)
+```
+
+### Pattern 2: Deduplication
+
+```
+Deduplication in streaming:
+  Key: event_id
+  State: Set of seen event_ids (bounded by TTL)
+  
+  if (event_id in seen_set) → skip (duplicate)
+  else → process + add to seen_set
+  
+  TTL: clean old entries (e.g., 24 hours) to bound state size
+```
+
+### Pattern 3: Dead Letter Queue (DLQ)
+
+```
+DLQ: events that failed processing → separate topic for investigation
+
+Main flow:   Kafka → Flink → process → Sink
+Error flow:  Flink → catch exception → DLQ topic
+
+DLQ contains:
+  - Original event
+  - Error message
+  - Timestamp
+  - Retry count
+
+Benefits: main pipeline doesn't block on bad events
+```
+
+<KnowledgeCheck>
+Stream processing: Flink (stateful), Kafka (event bus), event time + watermarks (correctness), windowing (tumbling/sliding/session), checkpointing (exactly-once). Patterns: enrichment, deduplication, DLQ. В следующем модуле: Data Warehouse Design.
+</KnowledgeCheck>

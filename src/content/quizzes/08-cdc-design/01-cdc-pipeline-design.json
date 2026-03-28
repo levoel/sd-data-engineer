@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "08-cdc-design/01-cdc-pipeline-design",
+  "moduleId": "08-cdc-design",
+  "_meta": {
+    "idPrefix": "sdde-m08-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m08-01-q1",
+      "type": "multiple-choice",
+      "question": "Legacy система без WAL доступа. Нужно реплицировать изменения в data lake. Таблицы имеют updated_at колонку. Какой подход CDC?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Log-based CDC (Debezium) — но WAL недоступен"
+        },
+        {
+          "id": "b",
+          "text": "Невозможно без WAL"
+        },
+        {
+          "id": "c",
+          "text": "Trigger-based CDC — создать triggers на каждую таблицу"
+        },
+        {
+          "id": "d",
+          "text": "Query-based CDC: poll по updated_at каждые 5 минут. SELECT * WHERE updated_at > last_poll_time. Ограничения: не ловит DELETE, нагрузка на source DB, latency 5 min"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Query-based CDC — fallback для legacy без WAL. Poll по updated_at: простая реализация, работает с любой DB. Ограничения: DELETEs не обнаруживаются (нет updated_at при delete), нагрузка на source (периодические SELECT), latency = poll interval. Soft deletes (is_deleted flag) решают проблему DELETE.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m08-01-q2",
+      "type": "multiple-choice",
+      "question": "Debezium CDC pipeline: после рестарта connector отправил дублирующие события. Downstream Silver table содержит дубликаты. Как обеспечить exactly-once?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Idempotent consumer: MERGE INTO silver USING bronze ON id = id. Дубликаты перезаписывают существующие строки (upsert). Kafka: idempotent producer + offset tracking. Delta/Iceberg: MERGE with deduplication"
+        },
+        {
+          "id": "b",
+          "text": "Перезапустить всё с нуля"
+        },
+        {
+          "id": "c",
+          "text": "Увеличить Kafka retention"
+        },
+        {
+          "id": "d",
+          "text": "Отключить перезапуск Debezium"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Exactly-once = idempotent writes на каждом layer. MERGE INTO (upsert): если row с таким id существует → update, иначе → insert. Дубликаты безопасны — результат тот же. Kafka idempotent producer (enable.idempotence=true) + consumer offset commit + MERGE = end-to-end exactly-once.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

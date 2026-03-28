@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "15-capstone/01-capstone-data-platform",
+  "moduleId": "15-capstone",
+  "_meta": {
+    "idPrefix": "sdde-m15-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m15-01-q1",
+      "type": "multiple-choice",
+      "question": "E-commerce platform: PostgreSQL (orders, customers) + clickstream + payment API. Нужен real-time order tracking + daily BI. Как организовать ingestion layer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Batch ETL каждый час для всех источников"
+        },
+        {
+          "id": "b",
+          "text": "Kafka как central event bus: PostgreSQL → Debezium CDC → Kafka (real-time). Clickstream → SDK → Kafka producer → Kafka. Payment API → webhook receiver → Kafka. Topic per source. Consumers: batch (Bronze) + streaming (real-time tracking) читают из одного Kafka"
+        },
+        {
+          "id": "c",
+          "text": "Direct connection из каждого consumer к source"
+        },
+        {
+          "id": "d",
+          "text": "Files dump на S3 каждые 15 минут"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Kafka = decoupling layer. Sources publish once → N consumers read independently. CDC: real-time changes без нагрузки на OLTP. Clickstream: high volume, async write to Kafka. Payments: webhooks → producer. Unified bus → multiple consumers (Bronze lakehouse, real-time ClickHouse, feature store) из одних данных.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m15-01-q2",
+      "type": "multiple-choice",
+      "question": "Capstone architecture review: команда предлагает начать с полной реализации всех 3 serving layers (BI + ML + Real-time) одновременно. Ваша рекомендация?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Согласиться — нужно всё сразу"
+        },
+        {
+          "id": "b",
+          "text": "Начать с ML pipeline — самое сложное"
+        },
+        {
+          "id": "c",
+          "text": "MVP first: начать с 1 source (PostgreSQL CDC) → Kafka → Bronze → Silver → Gold → 1 BI dashboard. Затем итерировать: добавить clickstream, затем ML features, затем real-time. Complexity kills projects — доставить value early, расширять incrementally"
+        },
+        {
+          "id": "d",
+          "text": "Отложить все serving layers на потом"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "MVP approach: 1 source → full pipeline → 1 consumer = working end-to-end in weeks. All 3 serving layers simultaneously = months of work before any value. Iterative: MVP → add sources → add serving layers. Each iteration delivers value. Risk: full build = integration hell, delayed feedback, potential pivot wasted.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

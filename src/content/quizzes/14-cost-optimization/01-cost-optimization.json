@@ -1,0 +1,87 @@
+{
+  "lessonSlug": "14-cost-optimization/01-cost-optimization",
+  "moduleId": "14-cost-optimization",
+  "_meta": {
+    "idPrefix": "sdde-m14-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m14-01-q1",
+      "type": "multiple-choice",
+      "question": "Daily Spark batch job на AWS: 50 × m5.2xlarge on-demand, runs 2 часа. Monthly cost: $1,152. Job tolerates interruptions (checkpointing). Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Spot instances: 50 × m5.2xlarge spot = $0.12/hr (vs $0.384 on-demand). Monthly: ~$360 (69% saving). Spark checkpoint → при interruption retry affected tasks. Mix: 80% spot + 20% on-demand (driver + critical executors on-demand)"
+        },
+        {
+          "id": "b",
+          "text": "Уменьшить количество executors до 10"
+        },
+        {
+          "id": "c",
+          "text": "Reserved instances на 3 года"
+        },
+        {
+          "id": "d",
+          "text": "Перейти на serverless"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Spot instances: 60-70% savings для interruptible workloads. Spark batch: checkpointing + task retry = tolerant to spot interruptions. Best practice: 80/20 mix (spot/on-demand). Driver всегда on-demand. Monthly: $1152 → $360. Reserved (c) — for always-on (streaming), not 2h/day batch.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m14-01-q2",
+      "type": "multiple-choice",
+      "question": "Bronze layer: 100 TB на S3 Standard. 80% данных старше 90 дней и читаются менее 1 раза в месяц. Как оптимизировать storage cost?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить данные старше 90 дней"
+        },
+        {
+          "id": "b",
+          "text": "S3 Lifecycle: данные 30-90 дней → Infrequent Access ($0.0125/GB), 90+ дней → Glacier Instant ($0.004/GB). 80 TB × $0.004 + 20 TB × $0.023 = $780/mo вместо $2300/mo (66% saving). Retain for replay, but on cheaper tier"
+        },
+        {
+          "id": "c",
+          "text": "Compress данные в ZIP"
+        },
+        {
+          "id": "d",
+          "text": "Переместить всё в Glacier Deep Archive"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "S3 Lifecycle tiering: hot (Standard) → warm (IA) → cold (Glacier Instant) → archive (Glacier Deep). Bronze data replay: needs fast retrieval (Glacier Instant = ms retrieval). Glacier Deep (d) = hours retrieval, not suitable for replay. Delete (a) = lose replay capability. Lifecycle = cost reduction without losing data.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m14-01-q3",
+      "type": "multiple-choice",
+      "question": "BigQuery query: SELECT * FROM orders (10 TB table). Стоимость: $50 за один запрос ($5/TB scanned). Аналитик запускает 10 раз в день. Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ограничить аналитику 1 запросом в день"
+        },
+        {
+          "id": "b",
+          "text": "Перейти на фиксированную оплату (flat-rate)"
+        },
+        {
+          "id": "c",
+          "text": "Partition by date + SELECT только нужные columns. SELECT order_id, amount FROM orders WHERE date = '2024-01-15' → scan 30 GB instead of 10 TB. Cost: $0.15 вместо $50 per query (99.7% saving). Partition pruning + column pruning = key BigQuery optimization"
+        },
+        {
+          "id": "d",
+          "text": "Экспортировать в CSV и работать локально"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "BigQuery charges per TB scanned. SELECT * = scan ALL columns (10 TB). Partitioning by date + selecting specific columns → scan fraction of data. 10 TB → 30 GB = 99.7% reduction. Additional: clustering by frequently filtered columns, materialized views for repeated queries. Flat-rate (c) = viable at high volume but doesn't fix wasteful queries.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

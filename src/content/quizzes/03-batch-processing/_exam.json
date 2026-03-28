@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "03-batch-processing/_exam",
+  "moduleId": "03-batch-processing",
+  "examTitle": "Экзамен: Batch Processing Systems",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m03-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m03-exam-q1",
+      "type": "multiple-choice",
+      "question": "Daily Spark job обрабатывает 500 GB. Вчера обнаружили bug в трансформации, затронувший последние 14 дней. Как исправить данные?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить все данные и запустить full refresh с нуля"
+        },
+        {
+          "id": "b",
+          "text": "Backfill: fix logic → запустить pipeline для каждого из 14 дней sequentially. Idempotent partition overwrite перезапишет каждый день с корректными данными. Bronze preserved for replay"
+        },
+        {
+          "id": "c",
+          "text": "Починить только сегодняшний день — остальные неважны"
+        },
+        {
+          "id": "d",
+          "text": "Вручную исправить данные в Silver таблице"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 2: Batch Pipeline Patterns — Backfill",
+      "explanation": "Backfill pattern: fix transform logic → run for date_range(14 days) → each date overwrites its Silver partition (idempotent). Bronze layer has raw data preserved → replay always possible. Full refresh (a) wastes resources on non-affected data. Manual fix (d) is error-prone and untrackable.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m03-exam-q2",
+      "type": "multiple-choice",
+      "question": "Spark job: read 200 GB Parquet → filter (10% passes) → groupBy(high_cardinality_key) → write. Job runs 3 hours. Какая оптимизация даст наибольший эффект?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить driver memory"
+        },
+        {
+          "id": "b",
+          "text": "Использовать CSV вместо Parquet"
+        },
+        {
+          "id": "c",
+          "text": "Predicate pushdown: filter BEFORE groupBy (Spark does this via Catalyst). Проверить: shuffle partitions правильные? (200 GB → ~1600 partitions). Проверить skew в groupBy key"
+        },
+        {
+          "id": "d",
+          "text": "Уменьшить число executors"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: Spark Architecture — Shuffle и Partitioning",
+      "explanation": "Three optimizations: 1) Catalyst pushes filter down automatically, but verify with explain(). 2) Shuffle partitions: 200 GB × 10% = 20 GB after filter → ~160 partitions (not default 200). 3) Check skew: if one key dominates → salting. Driver memory (a) rarely the bottleneck. CSV (c) is orders of magnitude worse.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m03-exam-q3",
+      "type": "multiple-choice",
+      "question": "Выбираете storage format для Bronze layer в lakehouse. Данные: events из API (JSON). 10 TB/day. Какой формат?",
+      "options": [
+        {
+          "id": "a",
+          "text": "JSON — сохранить as-is из API"
+        },
+        {
+          "id": "b",
+          "text": "Avro — row format для streaming"
+        },
+        {
+          "id": "c",
+          "text": "CSV — universal format"
+        },
+        {
+          "id": "d",
+          "text": "Parquet: конвертировать JSON → Parquet при ingestion. 10x compression, columnar reads, schema evolution support. JSON raw backup в separate location if needed"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 1: Spark Architecture — Storage Format",
+      "explanation": "Parquet for Bronze: 10 TB JSON → ~1 TB Parquet (10x compression). Columnar format enables selective column reads (analytics). Schema evolution via Iceberg/Delta. JSON (a) at 10 TB/day = 70 TB/week = storage cost explosion. Avro (d) is viable for streaming ingestion, but Parquet better for batch reads.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m03-exam-q4",
+      "type": "multiple-choice",
+      "question": "Spark job: JOIN двух таблиц (orders 1B rows, customers 10M rows). Один customer_id = 'GUEST' содержит 40% orders. Job висит 2 часа на последнем task. Проблема и решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Data skew: 'GUEST' key → один partition получает 400M rows. Fix: salting — добавить random suffix к skewed key (GUEST_0...GUEST_9), explode customer dimension для matching. Или: отфильтровать GUEST отдельно, broadcast join, union результаты"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить memory на executor до 64 GB"
+        },
+        {
+          "id": "c",
+          "text": "Использовать sort-merge join вместо hash join"
+        },
+        {
+          "id": "d",
+          "text": "Переразбить данные на большее число partitions"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: Spark Architecture — Skew Handling и Salting",
+      "explanation": "Data skew: один key = 40% данных → один task обрабатывает 400M rows, остальные idle. Salting: GUEST → GUEST_0...GUEST_9, distribute across 10 partitions. Alternative: separate skewed key, broadcast join (customer table fits in memory). Просто добавить partitions (d) не поможет — skewed key всё равно попадёт в один partition по hash.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

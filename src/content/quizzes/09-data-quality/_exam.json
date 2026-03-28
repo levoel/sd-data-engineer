@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "09-data-quality/_exam",
+  "moduleId": "09-data-quality",
+  "examTitle": "Экзамен: Data Quality & Observability",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m09-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m09-exam-q1",
+      "type": "multiple-choice",
+      "question": "BI dashboard показывает revenue = $0 за вчера. Pipeline completed successfully (no errors). Как предотвратить такое в будущем?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверять dashboard вручную каждое утро"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить pipeline retry count"
+        },
+        {
+          "id": "c",
+          "text": "Data quality gate между Silver и Gold: 1) Freshness check: MAX(order_date) = yesterday, 2) Volume check: row_count > 1000 (business minimum), 3) Accuracy check: SUM(amount) > 0. Если любой check fails → block Gold update, alert P1"
+        },
+        {
+          "id": "d",
+          "text": "Добавить logging в pipeline"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Data Quality Dimensions и Observability",
+      "explanation": "Pipeline 'success' ≠ data correctness. Quality gate pattern: validate data BEFORE promoting to Gold. Three checks: freshness (data is current), volume (enough rows), accuracy (values make sense). Block promotion + alert = prevent bad data from reaching dashboards. Shift-left: catch at Silver, not at dashboard.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m09-exam-q2",
+      "type": "multiple-choice",
+      "question": "Понедельник: daily order count = 45K (обычно 100K ± 10K). Anomaly detection сработал. Но это национальный праздник — orders действительно меньше. Как улучшить detection?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отключить anomaly detection по понедельникам"
+        },
+        {
+          "id": "b",
+          "text": "Игнорировать все anomalies по праздникам"
+        },
+        {
+          "id": "c",
+          "text": "Увеличить threshold до ±60%"
+        },
+        {
+          "id": "d",
+          "text": "Seasonal decomposition: учитывать day-of-week, holidays, seasonal patterns. Сравнивать с тем же днём прошлого года / прошлого месяца. Holiday calendar integration → adjust expected baseline. Z-score с seasonal adjustment вместо absolute threshold"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Anomaly Detection",
+      "explanation": "Simple Z-score без seasonality = false positives на праздники, weekends. Seasonal decomposition: extract trend + seasonal + residual. Compare residual against threshold. Holiday calendar: expected_count[holiday] = 50% of normal. ML-based: train on historical patterns including seasonality.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m09-exam-q3",
+      "type": "multiple-choice",
+      "question": "Data quality framework: 500 checks на 200 таблицах. Ежедневно 20-30 checks fail. Команда игнорирует alerts (alert fatigue). Как исправить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить половину checks"
+        },
+        {
+          "id": "b",
+          "text": "Tiered alerting: P1 (revenue-impacting, customer-facing) → PagerDuty immediate. P2 (internal reports, non-critical) → Slack channel, fix within SLA. P3 (warnings, anomalies) → daily digest email. Каждый check categorized по business impact. Review tier assignments quarterly"
+        },
+        {
+          "id": "c",
+          "text": "Отправлять все alerts на email"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить thresholds чтобы меньше checks fail"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Alerting Strategy и SLA Design",
+      "explanation": "Alert fatigue = team ignores all alerts. Solution: severity tiers по business impact. P1 (3-5 checks): revenue/customer-impacting → immediate action. P2 (20-30): internal, within-SLA. P3 (rest): informational. Reducing checks (a) loses coverage. Raising thresholds (d) misses real problems. Tiering: same coverage, actionable response.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m09-exam-q4",
+      "type": "multiple-choice",
+      "question": "dbt pipeline обновляет 50 таблиц в Gold layer. Где разместить data quality checks: до dbt run, внутри dbt (tests), или после dbt run?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только до dbt run — проверить source данные"
+        },
+        {
+          "id": "b",
+          "text": "Только после dbt run — проверить результат"
+        },
+        {
+          "id": "c",
+          "text": "Все checks внутри dbt tests — один инструмент"
+        },
+        {
+          "id": "d",
+          "text": "Multi-layer: 1) Pre-dbt: source freshness checks (dbt source freshness). 2) In-dbt: schema tests (not_null, unique, relationships) + custom tests (business rules). 3) Post-dbt: Great Expectations / Soda для cross-table validation, statistical checks, trend anomalies. Defense in depth"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Data Quality Gates — Shift-Left Testing",
+      "explanation": "Multi-layer quality: Pre-dbt catches stale/missing source data before expensive transforms run. In-dbt tests: schema-level (referential integrity, uniqueness) + business rules (amount > 0). Post-dbt: statistical validation impossible in dbt (distribution checks, ML-based anomaly detection). Each layer catches different failure modes.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

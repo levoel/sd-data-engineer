@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "12-feature-store/01-feature-store-ml",
+  "moduleId": "12-feature-store",
+  "_meta": {
+    "idPrefix": "sdde-m12-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m12-01-q1",
+      "type": "multiple-choice",
+      "question": "ML модель показывает 95% accuracy в training, но 70% в production. Training и serving используют разные реализации feature customer_ltv. Что это и как исправить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Training-serving skew (feature skew): training compute = SUM last 365d, serving compute = AVG last 30d. Fix: единое определение feature в Feature Store (Feast). Одна feature definition → одинаковый compute для offline (training) и online (serving)"
+        },
+        {
+          "id": "b",
+          "text": "Модель переобучена — нужно больше данных"
+        },
+        {
+          "id": "c",
+          "text": "Нужен другой ML алгоритм"
+        },
+        {
+          "id": "d",
+          "text": "Production данные некачественные"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Training-serving skew: feature computed differently в training vs production. Feature Store решает: одно определение (Python/YAML), один compute pipeline. Offline store (training) и online store (serving) получают идентичные значения. 95% → 70% gap = classic feature skew symptom.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m12-01-q2",
+      "type": "multiple-choice",
+      "question": "Real-time fraud detection: ML модель должна получить features за 5ms (p99). Какой store использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Offline store (S3 Parquet) — дёшево"
+        },
+        {
+          "id": "b",
+          "text": "Online store (Redis/DynamoDB): pre-materialized latest feature values. Key-value lookup по entity_id → p99 под 5ms. Batch pipeline ежедневно обновляет features, streaming pipeline для real-time features (last 1h activity)"
+        },
+        {
+          "id": "c",
+          "text": "Compute features on-the-fly при каждом запросе"
+        },
+        {
+          "id": "d",
+          "text": "Cache features в application memory"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Online store = key-value (Redis/DynamoDB). Pre-materialized: batch pipeline → compute features → write to Redis. Lookup: GET user:12345:features → O(1), sub-millisecond. Offline (a): S3 read = seconds. On-the-fly (c): compute at query time = expensive + slow. Streaming features (last 1h) → Flink → Redis для real-time signals.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

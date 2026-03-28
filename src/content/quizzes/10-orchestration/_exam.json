@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "10-orchestration/_exam",
+  "moduleId": "10-orchestration",
+  "examTitle": "Экзамен: Orchestration & Workflow Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m10-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m10-exam-q1",
+      "type": "multiple-choice",
+      "question": "Daily pipeline упал 3 дня назад, обнаружили сегодня. Silver/Gold данные за 3 дня отсутствуют. Как восстановить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Запустить pipeline только за сегодня"
+        },
+        {
+          "id": "b",
+          "text": "Вручную вставить данные в Silver"
+        },
+        {
+          "id": "c",
+          "text": "Backfill: запустить pipeline для каждого из 3 пропущенных дней sequentially. Prerequisite: tasks должны быть idempotent (partition overwrite). airflow dags backfill -s 3_days_ago -e yesterday. Bronze preserved → replay possible"
+        },
+        {
+          "id": "d",
+          "text": "Удалить все данные и начать заново"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Backfill Pattern",
+      "explanation": "Backfill pattern: replay pipeline для пропущенных дат. Требования: 1) Idempotent tasks (partition overwrite, не append), 2) Bronze preserved (source of truth для replay), 3) Sequential execution (day1 → day2 → day3, если есть зависимости). Prevention: alerting на pipeline failure, SLA monitoring.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m10-exam-q2",
+      "type": "multiple-choice",
+      "question": "Pipeline ждёт файл от upstream системы на S3. Файл иногда приходит с опозданием (обычно 06:00, иногда 09:00). Как спроектировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Запускать pipeline в 09:00 (worst case)"
+        },
+        {
+          "id": "b",
+          "text": "Попросить upstream присылать вовремя"
+        },
+        {
+          "id": "c",
+          "text": "Polling script каждую секунду"
+        },
+        {
+          "id": "d",
+          "text": "Sensor pattern: S3KeySensor с poke_interval=5min, timeout=4h. Pipeline запускается сразу после появления файла. Timeout → alert to on-call. SLA monitoring: если файл не пришёл к 08:00 → warning, к 10:00 → P1 alert"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Sensor Pattern",
+      "explanation": "Sensor pattern: event-driven start вместо fixed schedule. S3KeySensor проверяет наличие файла каждые N минут. Pipeline запускается при появлении. Timeout = safety net (alert если файл не пришёл за 4 часа). SLA monitor: track expected vs actual arrival → visibility into upstream reliability.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m10-exam-q3",
+      "type": "multiple-choice",
+      "question": "Airflow DAG: 20 tasks, 5 из них — независимые extract tasks из разных sources. Сейчас они выполняются sequentially (task1 >> task2 >> ... >> task5 >> transform). Как улучшить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Использовать один большой task для всех extractions"
+        },
+        {
+          "id": "b",
+          "text": "Параллельное выполнение: extract_api_1, extract_db_2, extract_s3_3, extract_api_4, extract_sftp_5 → все запускаются одновременно. Transform task зависит от ВСЕХ пяти (fan-in). Concurrency: 5 → runtime сокращается с суммы до max(individual). Task-level retry: один failed extract не блокирует остальные"
+        },
+        {
+          "id": "c",
+          "text": "Вынести каждый extract в отдельный DAG"
+        },
+        {
+          "id": "d",
+          "text": "Запускать extracts каждый час вместо daily"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел DAG Design Patterns — Fan-out / Fan-in",
+      "explanation": "Fan-out/fan-in: независимые tasks параллельно. [extract_1, extract_2, ..., extract_5] >> transform. Если каждый extract занимает 10 min, sequential = 50 min, parallel = 10 min (5x speedup). Airflow parallelism: зависит от executor (Celery/Kubernetes) и pool size. Retry: failed extract retries independently.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m10-exam-q4",
+      "type": "multiple-choice",
+      "question": "Компания мигрирует с Airflow 1.x на Dagster. 80 DAGs в production. Какая стратегия миграции?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Big-bang: переписать все 80 DAGs за один спринт"
+        },
+        {
+          "id": "b",
+          "text": "Только новые pipelines на Dagster, старые оставить навсегда"
+        },
+        {
+          "id": "c",
+          "text": "Strangler Fig: новые pipelines — на Dagster. Критичные существующие — мигрировать по приоритету (revenue-impacting first). Оба orchestrators работают параллельно. Cross-trigger: Dagster sensor ждёт Airflow completion (или наоборот). Полная миграция: 3-6 месяцев"
+        },
+        {
+          "id": "d",
+          "text": "Написать автоматический конвертер Airflow → Dagster"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Orchestrator Migration и Strangler Fig Pattern",
+      "explanation": "Strangler Fig: постепенная замена. Оба orchestrators работают параллельно → zero downtime. Migration priority: revenue-critical DAGs first (validate on Dagster), затем остальные. Cross-system triggers: Dagster ExternalAssetSensor ждёт Airflow output. Big-bang (a) = too risky для 80 DAGs. Auto-converter (d) = DAG patterns слишком разные между tools.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

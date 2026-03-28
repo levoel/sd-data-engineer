@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "02-pipeline-patterns/02-lambda-kappa-medallion",
+  "moduleId": "02-pipeline-patterns",
+  "_meta": {
+    "idPrefix": "sdde-m02-02"
+  },
+  "questions": [
+    {
+      "id": "sdde-m02-02-q1",
+      "type": "multiple-choice",
+      "question": "Команда из 3 DE поддерживает Lambda architecture (Spark batch + Flink streaming). Какая основная проблема?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Два стека кода для одной логики: batch (Spark) + stream (Flink). Двойное тестирование, двойной debugging, и необходимость синхронизации результатов. Для 3 DE — too complex"
+        },
+        {
+          "id": "b",
+          "text": "Lambda не поддерживает real-time"
+        },
+        {
+          "id": "c",
+          "text": "Lambda слишком медленная"
+        },
+        {
+          "id": "d",
+          "text": "Lambda не работает с Kafka"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Lambda = двойная complexity: batch logic (Spark/Python) + streaming logic (Flink/Java) + serving merge logic. Для 3 DE это unsustainable. Alternatives: Kappa (streaming-only) или Medallion + micro-batch (Spark Structured Streaming в режиме micro-batch).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m02-02-q2",
+      "type": "multiple-choice",
+      "question": "В Medallion architecture, что хранится в Bronze layer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Агрегированные бизнес-метрики"
+        },
+        {
+          "id": "b",
+          "text": "Raw данные as-is из источников: append-only, immutable, partitioned by ingestion_date. Это source of truth для replay и debugging"
+        },
+        {
+          "id": "c",
+          "text": "Очищенные и дедуплицированные данные"
+        },
+        {
+          "id": "d",
+          "text": "Star schema для BI"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Bronze = raw landing zone. Данные сохраняются exactly as received: no cleaning, no deduplication, no transformation. Append-only для immutability. Partitioned by ingestion_date (когда данные пришли, не когда event произошёл). Это позволяет replay pipeline from scratch при необходимости.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m02-02-q3",
+      "type": "true-false",
+      "question": "Data Mesh — это техническая архитектура (как Lambda или Medallion), определяющая конкретные инструменты и pipelines.",
+      "correctAnswer": false,
+      "explanation": "Data Mesh — организационный паттерн, не техническая архитектура. Он определяет КТО владеет данными (domain teams), не КАК обрабатывать (инструменты). Можно использовать Medallion + Spark + dbt внутри Data Mesh. Ключевые принципы: domain ownership, data-as-product, self-serve platform, federated governance.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

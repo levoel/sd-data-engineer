@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "02-pipeline-patterns/01-etl-elt-zero-etl",
+  "moduleId": "02-pipeline-patterns",
+  "_meta": {
+    "idPrefix": "sdde-m02-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m02-01-q1",
+      "type": "multiple-choice",
+      "question": "Компания хранит PII данные (имена, email, телефоны). Регуляция запрещает хранение raw PII в DWH. Какая pipeline-модель?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ELT — загрузить raw, трансформировать в DWH"
+        },
+        {
+          "id": "b",
+          "text": "Любая модель — PII не влияет на выбор"
+        },
+        {
+          "id": "c",
+          "text": "Zero-ETL — прямая интеграция без трансформации"
+        },
+        {
+          "id": "d",
+          "text": "ETL — маскировать/удалить PII ДО загрузки в DWH. Transform-first обеспечивает compliance"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "PII compliance = ETL: transform before load. PII должна быть masked/hashed/removed ДО попадания в DWH. ELT загружает raw (включая PII) в DWH → нарушение compliance. ETL обрабатывает PII в dedicated secure engine перед загрузкой.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m02-01-q2",
+      "type": "true-false",
+      "question": "dbt (Data Build Tool) — инструмент ETL, который извлекает данные из source систем и загружает в DWH.",
+      "correctAnswer": false,
+      "explanation": "dbt — инструмент Transform (T), не Extract-Load (EL). dbt работает ВНУТРИ DWH: читает таблицы DWH, трансформирует через SQL, записывает результат обратно в DWH. Для Extract-Load используются отдельные tools (Fivetran, Airbyte). dbt + Fivetran = полный ELT stack.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

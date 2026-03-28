@@ -1,0 +1,101 @@
+{
+  "lessonSlug": "04-stream-processing/_exam",
+  "moduleId": "04-stream-processing",
+  "examTitle": "Экзамен: Stream Processing Systems",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m04-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m04-exam-q1",
+      "type": "multiple-choice",
+      "question": "E-commerce компания: 10M events/day, нужен real-time fraud detection (latency менее 5 sec). Какой streaming stack?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Kafka (ingestion, partitioned by user_id для ordering) → Flink (stateful stream processing, event time windows, checkpointing) → alert service. Flink для low-latency stateful processing."
+        },
+        {
+          "id": "b",
+          "text": "Spark batch jobs каждые 5 минут"
+        },
+        {
+          "id": "c",
+          "text": "Direct API calls от каждого сервиса к fraud detector"
+        },
+        {
+          "id": "d",
+          "text": "PostgreSQL triggers на INSERT"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите уроки 1-2: Kafka Architecture и Flink Watermarks",
+      "explanation": "Kafka: ordered event ingestion (key=user_id for per-user ordering). Flink: stateful processing (track user behavior patterns), event-time windowing (sliding window over last 5 min of user activity), checkpointing (exactly-once). Sub-5-sec latency achievable with Flink event-at-a-time processing.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m04-exam-q2",
+      "type": "multiple-choice",
+      "question": "Flink job получает events из Kafka. Некоторые events приходят с 10-minute delay (mobile devices с плохим интернетом). Tumbling window = 5 min. Как обработать late events?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Игнорировать late events — они не важны"
+        },
+        {
+          "id": "b",
+          "text": "Set allowed lateness = 15 min. Late events обновят already-fired window results (accumulating mode). Events позже 15 min → side output (DLQ) для separate processing"
+        },
+        {
+          "id": "c",
+          "text": "Увеличить window до 15 min (чтобы вместить все late events)"
+        },
+        {
+          "id": "d",
+          "text": "Использовать processing time вместо event time"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 2: Flink — Watermarks и late data handling",
+      "explanation": "Allowed lateness: window fires at watermark, but remains 'open' for lateness period. Late events update window result. Very late events (beyond lateness) → side output for investigation. Increasing window (c) reduces granularity. Processing time (d) gives wrong results. Ignoring (a) loses data.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m04-exam-q3",
+      "type": "true-false",
+      "question": "В Kafka, если producer отправляет messages с key=null, все messages попадут в одну partition.",
+      "correctAnswer": false,
+      "explanation": "key=null → Kafka uses round-robin (or sticky partitioning in newer versions) to distribute messages evenly across ALL partitions. This gives best throughput/distribution but NO ordering guarantees between messages. For ordering: must set explicit key.",
+      "studyHint": "Повторите урок 1: Kafka Architecture — Partitioning и Key-based Routing",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m04-exam-q4",
+      "type": "multiple-choice",
+      "question": "Flink job с exactly-once semantics пишет результаты в Kafka. Checkpoint interval = 1 min. Job упал и перезапустился. Что произойдёт с данными?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Все данные потеряны после последнего checkpoint"
+        },
+        {
+          "id": "b",
+          "text": "Дубликаты в output — Kafka не поддерживает exactly-once"
+        },
+        {
+          "id": "c",
+          "text": "Flink автоматически удалит старые данные из Kafka"
+        },
+        {
+          "id": "d",
+          "text": "Flink восстановит state из последнего checkpoint, переиграет events из Kafka (consumer offset восстановлен). Two-phase commit: uncommitted records в Kafka будут aborted. Результат: exactly-once end-to-end, потеря = 0, дубликаты = 0"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 2: Flink — Checkpointing и Exactly-Once Semantics",
+      "explanation": "Flink exactly-once with Kafka sink: checkpoint сохраняет operator state + Kafka producer transaction ID. При recovery: rollback к checkpoint, Kafka transaction abort (uncommitted records невидимы consumers). Re-process from saved offset → commit new transaction. End-to-end exactly-once через two-phase commit protocol.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

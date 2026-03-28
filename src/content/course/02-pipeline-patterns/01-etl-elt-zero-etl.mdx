@@ -1,0 +1,183 @@
+---
+title: "ETL vs ELT vs Zero-ETL"
+description: "Три модели перемещения данных: когда какую использовать, trade-offs и современные тренды"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["ETL", "ELT", "Zero-ETL", "Data Pipeline", "Modern Data Stack"]
+---
+
+# ETL vs ELT vs Zero-ETL
+
+## Эволюция pipeline-моделей
+
+Data pipeline прошёл три поколения:
+
+<DiagramContainer title="Эволюция: ETL → ELT → Zero-ETL" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="ETL (2000-2015): трансформация ДО загрузки. On-premise DWH с ограниченным compute.">
+      <DataBox label="1. ETL (классический)" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Extract → Transform → Load</div>
+          <div className="text-slate-400 mt-1">Transform ДО load</div>
+          <div>Tools: Informatica, SSIS, Talend</div>
+          <div className="text-yellow-400">Era: on-premise DWH</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="ELT (2015-now): загрузка raw → трансформация в DWH. Cloud DWH с мощным compute.">
+      <DataBox label="2. ELT (современный)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Extract → Load → Transform</div>
+          <div className="text-slate-400 mt-1">Transform ПОСЛЕ load (в DWH)</div>
+          <div>Tools: Fivetran + dbt + Snowflake</div>
+          <div className="text-emerald-400">Era: cloud DWH/Lakehouse</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Zero-ETL: прямая интеграция без pipeline. Cloud-native connectors.">
+      <DataBox label="3. Zero-ETL (emerging)" className="border-purple-500/30">
+        <div className="text-xs space-y-1">
+          <div>Source → Direct Integration → DWH</div>
+          <div className="text-slate-400 mt-1">Нет отдельного pipeline</div>
+          <div>Tools: Aurora→Redshift, AlloyDB→BQ</div>
+          <div className="text-purple-400">Era: cloud-native integration</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## ETL: Transform Before Load
+
+```
+ETL Flow:
+Source DB → Extract (read data) 
+         → Transform (clean, validate, reshape in separate engine)
+         → Load (write to DWH in final form)
+
+Пример:
+PostgreSQL → Informatica ETL Server → clean nulls, join tables, 
+                                       apply business rules
+                                    → Teradata DWH
+```
+
+### Когда ETL
+
+| Сценарий | Почему ETL |
+|----------|-----------|
+| **PII compliance** | Mask/remove PII BEFORE loading to DWH |
+| **Legacy DWH** | On-premise DWH без мощного compute (Teradata, Oracle) |
+| **Data contracts** | Strict schema enforcement before storage |
+| **Bandwidth constraints** | Transform reduces data volume before transfer |
+
+## ELT: Load Raw, Transform In-Place
+
+```
+ELT Flow:
+Source DB → Extract → Load raw data to DWH/Lake
+                   → Transform inside DWH (SQL, dbt)
+
+Пример:
+PostgreSQL → Fivetran (extract+load raw) → Snowflake (raw tables)
+          → dbt (SQL transforms in Snowflake) → analytics tables
+```
+
+### Когда ELT
+
+| Сценарий | Почему ELT |
+|----------|-----------|
+| **Cloud DWH** | Snowflake/BigQuery have massive compute for transforms |
+| **Data exploration** | Raw data available for ad-hoc analysis |
+| **Speed** | Load fast, transform later — faster data availability |
+| **Iteration** | Change transforms without re-extracting |
+
+### dbt: ключевой инструмент ELT
+
+```
+dbt (Data Build Tool):
+  - SQL-based transformations
+  - Version controlled (Git)
+  - Testing built-in (schema tests, data tests)
+  - Documentation auto-generated
+  - Lineage tracking
+  
+dbt model example:
+  -- models/marts/dim_customers.sql
+  SELECT
+    c.customer_id,
+    c.name,
+    c.email,
+    COUNT(o.order_id) as total_orders,
+    SUM(o.amount) as lifetime_value
+  FROM {{ ref('stg_customers') }} c
+  LEFT JOIN {{ ref('stg_orders') }} o ON c.customer_id = o.customer_id
+  GROUP BY 1, 2, 3
+```
+
+## Zero-ETL: Direct Integration
+
+```
+Zero-ETL:
+  Source → native connector → DWH (no separate pipeline)
+
+Примеры:
+  Amazon Aurora → zero-ETL → Redshift (AWS native)
+  AlloyDB → zero-ETL → BigQuery (GCP native)
+  
+Ограничения:
+  - Vendor lock-in (only within cloud provider)
+  - Limited to supported source/destination pairs
+  - Less control over transformation timing
+```
+
+## Comparison Matrix
+
+<DiagramContainer title="ETL vs ELT vs Zero-ETL" className="my-6">
+  <Grid columns={4} className="p-4 gap-2">
+    <DataBox label="Aspect" className="font-semibold">Критерий</DataBox>
+    <DataBox label="ETL" className="border-blue-500/30 font-semibold">ETL</DataBox>
+    <DataBox label="ELT" className="border-emerald-500/30 font-semibold">ELT</DataBox>
+    <DataBox label="Zero-ETL" className="border-purple-500/30 font-semibold">Zero-ETL</DataBox>
+
+    <DataBox>Transform location</DataBox>
+    <DataBox>Отдельный engine</DataBox>
+    <DataBox>Внутри DWH</DataBox>
+    <DataBox>Нет / minimal</DataBox>
+
+    <DataBox>Raw data available?</DataBox>
+    <DataBox>Нет (transformed only)</DataBox>
+    <DataBox>Да (raw + transformed)</DataBox>
+    <DataBox>Depends on config</DataBox>
+
+    <DataBox>Latency</DataBox>
+    <DataBox>Высокая (2 hops)</DataBox>
+    <DataBox>Средняя (load fast)</DataBox>
+    <DataBox>Низкая (direct)</DataBox>
+
+    <DataBox>Complexity</DataBox>
+    <DataBox>Высокая (ETL engine)</DataBox>
+    <DataBox>Средняя (dbt + loader)</DataBox>
+    <DataBox>Низкая (managed)</DataBox>
+
+    <DataBox>Vendor lock-in</DataBox>
+    <DataBox>Низкий</DataBox>
+    <DataBox>Средний (DWH dependency)</DataBox>
+    <DataBox>Высокий (cloud provider)</DataBox>
+
+    <DataBox>Best for</DataBox>
+    <DataBox>Legacy, PII, contracts</DataBox>
+    <DataBox>Cloud DWH, iteration</DataBox>
+    <DataBox>Simple replication</DataBox>
+  </Grid>
+</DiagramContainer>
+
+<Callout type="tip">
+**Современный default: ELT**
+
+Для большинства новых проектов ELT — default choice. Fivetran/Airbyte для extract+load, dbt для transform. Raw data preserved for exploration. Zero-ETL — дополнение для specific sources, не замена.
+</Callout>
+
+<KnowledgeCheck>
+ETL → ELT → Zero-ETL: эволюция от transform-first к load-first. ELT доминирует благодаря cloud DWH compute. ETL остаётся для PII/compliance. Zero-ETL — emerging для simple replication. В следующем уроке: Lambda, Kappa и Medallion — архитектурные паттерны для pipeline систем.
+</KnowledgeCheck>

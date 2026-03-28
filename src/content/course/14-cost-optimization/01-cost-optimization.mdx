@@ -1,0 +1,178 @@
+---
+title: "Cost Optimization & Tuning"
+description: "Cloud compute/storage costs, spot instances, auto-scaling, data lifecycle, right-sizing, query optimization"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Cost Optimization", "Cloud Costs", "Spot Instances", "Auto-scaling", "Data Lifecycle", "Right-sizing"]
+---
+
+# Cost Optimization & Tuning
+
+## Почему Cost — это Design Decision
+
+<DiagramContainer title="Data Platform Cost Breakdown: Compute vs Storage vs Network">
+<FlowRow>
+  <Tooltip content="Compute — обычно 50-70% общего счёта. Включает Spark clusters, Flink jobs, OLAP engines, managed warehouse slots/credits. Spot instances дают 60-70% savings для batch">
+    <DataBox label="Compute (50-70%)">
+      Spark clusters, Flink jobs, warehouse credits. Spot: -70% для batch
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Storage — 15-30% счёта, но растёт линейно с данными. Lifecycle policy (Standard → IA → Glacier) даёт 80%+ savings на Bronze layer">
+    <DataBox label="Storage (15-30%)">
+      S3/GCS, warehouse storage. Lifecycle tiers: -82% на Bronze
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Network — 5-15% счёта, но скрытый killer. Cross-region transfer $0.01-0.02/GB, egress $0.09-0.12/GB. Co-locate data и compute в одном region!">
+    <DataBox label="Network (5-15%)">
+      Cross-region: $0.02/GB, egress: $0.12/GB. Colocate!
+    </DataBox>
+  </Tooltip>
+</FlowRow>
+<FlowRow>
+  <Tooltip content="Managed services (BigQuery, Snowflake, Databricks) — предсказуемый cost, но premium pricing. BigQuery: $5/TB scanned, Snowflake: $2-3/credit">
+    <FlowNode label="Managed Services" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Right-sizing: CPU util < 30% → downsize, Memory < 40% → switch family. ARM/Graviton: 20% cheaper при same perf">
+    <FlowNode label="Right-sizing" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Auto-scaling: Spark dynamic allocation, Kafka HPA на consumer lag, OLAP read replicas. Scale UP быстро, scale DOWN с grace period">
+    <FlowNode label="Auto-scaling" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Query optimization: partition pruning, column pruning, auto-suspend idle warehouses. BigQuery: SELECT * = полный scan = полная цена">
+    <FlowNode label="Query Optimization" />
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+Data platform без cost optimization — бездонная яма. Типичная ошибка: запуск без budget awareness → счёт за cloud в 10x от ожидания через 3 месяца.
+
+```
+Типичные cost drivers:
+  1. Compute: Spark clusters, Flink jobs, OLAP engines
+  2. Storage: S3/GCS/ADLS, warehouse storage
+  3. Network: cross-region transfer, egress
+  4. Managed services: BigQuery slots, Snowflake credits
+  5. Licenses: Databricks DBUs, Confluent CKUs
+```
+
+## Cost Comparison: Compute
+
+| Resource | On-demand | Spot/Preemptible | Reserved (1yr) | Savings |
+|----------|----------|-----------------|----------------|---------|
+| **AWS m5.2xlarge** | $0.384/hr | $0.12/hr | $0.24/hr | 69% spot |
+| **GCP n2-standard-8** | $0.39/hr | $0.12/hr | $0.24/hr | 69% spot |
+| **Databricks DBU** | $0.55/DBU | $0.30/DBU (jobs) | $0.37/DBU | 45% jobs |
+| **Snowflake credit** | $2-3/credit | N/A | $1.8-2.5 | 20% prepay |
+
+<Callout type="tip">
+**Spot instances для batch jobs.** Spark batch pipeline tolerates interruptions (checkpointing + retry). Используйте spot для 70% cost reduction. Streaming (Flink) — on-demand (interruption = data loss risk).
+</Callout>
+
+## Storage Optimization
+
+```
+S3 Storage Tiers:
+  Standard:        $0.023/GB/month (hot data, last 30 days)
+  Infrequent:      $0.0125/GB/month (warm, 30-90 days)
+  Glacier Instant:  $0.004/GB/month (cold, 90d-1yr)
+  Glacier Deep:     $0.00099/GB/month (archive, 1yr+)
+
+Data Lifecycle Policy:
+  Bronze (raw):
+    0-30 days:  Standard (frequent replay)
+    30-90 days: Infrequent Access
+    90-365 days: Glacier Instant
+    365+ days:  Glacier Deep или DELETE
+
+  Silver (cleaned):
+    0-90 days:  Standard
+    90-365 days: Infrequent Access
+    365+ days:  Glacier Instant
+
+  Gold (aggregated):
+    Always Standard (frequently queried)
+
+Savings example (100 TB Bronze):
+  Without lifecycle: $2,300/month
+  With lifecycle:    $400/month (82% saving)
+```
+
+## Compute Right-sizing
+
+```
+Anti-pattern: "let's use r5.4xlarge for everything"
+
+Right-sizing framework:
+  1. Measure actual utilization (CloudWatch, Prometheus)
+  2. Identify waste:
+     CPU util < 30% → downsize
+     Memory util < 40% → switch instance family
+     GPU util < 20% → remove GPU instances
+  
+  3. Match workload to instance:
+     Compute-heavy (Spark transforms) → c-family (c5, c6g)
+     Memory-heavy (large JOINs, caches) → r-family (r5, r6g)
+     Balanced → m-family (m5, m6g)
+     ARM → Graviton (20% cheaper, same perf)
+
+Spark cluster sizing:
+  Over-provisioned: 50 executors × 16 GB → 800 GB total, using 200 GB
+  Right-sized: 20 executors × 12 GB → 240 GB, 83% utilized
+  Savings: 60% compute cost reduction
+```
+
+## Query Optimization
+
+```
+BigQuery:
+  [NO] SELECT * FROM large_table
+  [OK] SELECT col1, col2 FROM large_table WHERE date = '2024-01-01'
+  → Columnar: scan only needed columns
+  → Partitioning: scan only needed partitions
+  → Cost: $5/TB scanned → fewer columns = less cost
+
+Snowflake:
+  [NO] warehouse = 'X-LARGE' for all queries
+  [OK] Multi-cluster auto-scaling:
+     Small queries → XS warehouse ($1/credit)
+     Heavy ETL → L warehouse ($8/credit)
+     Auto-suspend after 60 seconds of idle
+
+Spark:
+  [NO] spark.sql.shuffle.partitions = 200 (default)
+  [OK] AQE (Adaptive Query Execution) auto-tunes:
+     spark.sql.adaptive.enabled = true
+     spark.sql.adaptive.coalescePartitions.enabled = true
+```
+
+## Auto-scaling Strategies
+
+```
+Spark on K8s:
+  Dynamic allocation:
+    spark.dynamicAllocation.enabled = true
+    spark.dynamicAllocation.minExecutors = 2
+    spark.dynamicAllocation.maxExecutors = 100
+    → Scale up for heavy stages, down for light ones
+
+Kafka:
+  Consumers: K8s HPA based on consumer lag
+    if lag > 10000 messages → add consumer
+    if lag < 100 → remove consumer (respect min replicas)
+
+OLAP:
+  ClickHouse: read replicas for query scaling
+  Druid: auto-scale middle managers based on ingestion load
+```
+
+<Callout type="warning">
+**Мониторьте cost ПЕРЕД оптимизацией.** Без visibility нельзя оптимизировать. Настройте cost dashboards (AWS Cost Explorer, GCP Billing, Kubecost) с разбивкой по team/pipeline/layer. Установите budget alerts на 80% и 100% порога.
+</Callout>
+
+<KnowledgeCheck>
+Cost Optimization essentials: Spot instances = 70% savings для batch. Storage lifecycle = 80%+ savings на Bronze. Right-sizing: measure utilization → match instance family. Query optimization: partition pruning, column pruning, auto-suspend. Auto-scaling: dynamic allocation для Spark, HPA для Kafka consumers. Мониторинг cost = prerequisite для оптимизации. В следующем модуле: Capstone — Design Data Platform.
+</KnowledgeCheck>

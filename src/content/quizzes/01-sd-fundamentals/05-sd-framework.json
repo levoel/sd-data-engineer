@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/05-sd-framework",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdde-m01-05"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-05-q1",
+      "type": "multiple-choice",
+      "question": "В 7-Step DE SD Framework, какой шаг должен идти первым?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Understand Consumers & Use Cases — начать с конца: кто использует данные и зачем"
+        },
+        {
+          "id": "b",
+          "text": "Определить data flow (sources → processing → storage)"
+        },
+        {
+          "id": "c",
+          "text": "Выбрать технологии (Kafka, Spark, Flink)"
+        },
+        {
+          "id": "d",
+          "text": "Design Data Model (star schema, medallion)"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Framework начинается с consumers: кто использует данные, какие вопросы задаёт, в каком формате нужны данные. Это определяет все последующие решения: freshness SLA → processing model, query patterns → data model, concurrent users → serving layer.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m01-05-q2",
+      "type": "multiple-choice",
+      "question": "Вы проектируете clickstream pipeline. Real-time dashboard нужен с latency < 1 мин, ML features — hourly, product reports — daily. Какая модель processing оптимальна?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Всё через streaming — один pipeline для всех use cases"
+        },
+        {
+          "id": "b",
+          "text": "Hybrid: streaming для real-time dashboard, micro-batch (hourly) для ML, daily batch для product"
+        },
+        {
+          "id": "c",
+          "text": "Всё через batch — запускать каждую минуту"
+        },
+        {
+          "id": "d",
+          "text": "Kappa architecture — всё через Kafka"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Разные SLA → разные processing models. Streaming (Kafka→Flink→Redis) для dashboard (< 1 мин). Micro-batch (hourly Spark jobs) для ML features — good balance cost/freshness. Daily batch (dbt) для product reports — самый дешёвый. Единый streaming для всего — overkill и дорого для daily reports.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m01-05-q3",
+      "type": "true-false",
+      "question": "Operational Layer (monitoring, alerting, data quality) — необязательный шаг в SD Framework, который добавляют только для enterprise проектов.",
+      "correctAnswer": false,
+      "explanation": "Operational Layer обязателен для любого production pipeline. Без мониторинга вы узнаете о проблеме только когда аналитик скажет 'данные не обновились'. Без data quality checks — битые данные попадут в reports. Масштаб разный: для маленького проекта — простые health checks и Slack алерты, для enterprise — PagerDuty, SLA dashboards, lineage.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

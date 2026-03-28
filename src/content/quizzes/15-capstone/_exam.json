@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "15-capstone/_exam",
+  "moduleId": "15-capstone",
+  "examTitle": "Экзамен: Capstone — Data Platform Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m15-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m15-exam-q1",
+      "type": "multiple-choice",
+      "question": "E-commerce data platform в production 6 месяцев. Проблема: Silver layer pipeline упал ночью, Gold не обновился, BI показывает вчерашние данные. Как предотвратить в будущем?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверять dashboard каждое утро вручную"
+        },
+        {
+          "id": "b",
+          "text": "Дублировать pipeline для redundancy"
+        },
+        {
+          "id": "c",
+          "text": "Retry pipeline каждые 5 минут автоматически"
+        },
+        {
+          "id": "d",
+          "text": "Multi-layer observability: 1) Pipeline monitoring: Dagster alert на task failure → P1 PagerDuty, 2) Freshness SLA: если Gold не обновился за 2 часа → alert, 3) Data quality gate: блокировать Gold update если Silver checks fail, 4) Dashboard annotation: показать timestamp последнего обновления"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите модули M09 (Data Quality) и M10 (Orchestration)",
+      "explanation": "Defense in depth: 1) Orchestrator alerting = catch failures immediately, 2) Freshness monitoring = catch silent failures (pipeline runs but produces no data), 3) Quality gates = prevent bad data from reaching Gold, 4) User-facing freshness indicator = transparency. Multiple detection layers → no silent failures.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m15-exam-q2",
+      "type": "multiple-choice",
+      "question": "Финальный design review: какой table format для lakehouse, если требования — vendor-neutral, multi-engine (Spark + Trino + Flink), partition evolution без rewrite?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Apache Iceberg: vendor-neutral (поддержка Snowflake, BigQuery, AWS, Databricks), multi-engine native, hidden partitioning (partition evolution без data rewrite), full schema evolution (add/drop/rename/reorder)"
+        },
+        {
+          "id": "b",
+          "text": "Delta Lake — Databricks ecosystem"
+        },
+        {
+          "id": "c",
+          "text": "Apache Hudi — upsert-optimized"
+        },
+        {
+          "id": "d",
+          "text": "Plain Parquet без table format"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите модуль M06 (Lakehouse Architecture)",
+      "explanation": "Iceberg = best fit для vendor-neutral multi-engine lakehouse. Hidden partitioning: change partition scheme without rewriting data. Schema evolution: full support without downtime. Adoption: Snowflake, BigQuery, AWS Athena, Databricks all support Iceberg. Delta (a) = Databricks-centric. Hudi (c) = best for upsert-heavy, less multi-engine support.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m15-exam-q3",
+      "type": "multiple-choice",
+      "question": "E-commerce platform cloud bill: $15K/month. Breakdown: Spark clusters $8K, S3 storage $4K, Kafka $2K, other $1K. Какая оптимизация даст наибольший эффект?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Оптимизировать Kafka (13% от bill)"
+        },
+        {
+          "id": "b",
+          "text": "Spark compute ($8K = 53% of bill): 1) Spot instances для batch jobs (70% saving = -$4K), 2) Right-size executors (measure utilization), 3) Dynamic allocation. S3: lifecycle policies для Bronze (tiering → -$2K). Combined: $15K → $9K (40% reduction)"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на on-premise"
+        },
+        {
+          "id": "d",
+          "text": "Уменьшить data retention до 7 дней"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите модуль M14 (Cost Optimization)",
+      "explanation": "Optimize the biggest cost driver first: Spark = 53%. Spot instances = immediate 60-70% savings on batch compute. S3 lifecycle = second largest (27%). Combined: $8K × 0.5 + $4K × 0.5 = $6K savings. Kafka optimization (13%) = lower priority. Pareto: 80% savings from top 2 categories.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m15-exam-q4",
+      "type": "multiple-choice",
+      "question": "Архитектурное review: команда предлагает использовать один PostgreSQL (RDS) как: OLTP для приложения, хранилище для аналитики, и message queue (LISTEN/NOTIFY). Данные: 100 GB, 50 users. Ваша оценка?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отличный план — KISS principle"
+        },
+        {
+          "id": "b",
+          "text": "Категорически нет — нужна full data platform"
+        },
+        {
+          "id": "c",
+          "text": "Правильно для текущего масштаба: 100 GB + 50 users = PostgreSQL справляется со всеми ролями. Materialized views для analytics, pg_cron для scheduling, LISTEN/NOTIFY для простых events. Планирование exit criteria: когда мигрировать компоненты (analytics query > 30s → warehouse, events > 1K/s → Kafka). Документировать архитектурный долг"
+        },
+        {
+          "id": "d",
+          "text": "Заменить PostgreSQL на MongoDB"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Architecture Decision — Right-sizing и Exit Criteria",
+      "explanation": "Boring technology principle: PostgreSQL handles many roles at small scale. 100 GB analytics — materialized views sufficient. 50 users — no concurrency issues. LISTEN/NOTIFY — adequate for low-throughput events. Key: define EXIT CRITERIA — when each component needs dedicated solution. Without exit criteria → sudden pain at scale. Full platform (b) at this scale = over-engineering.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

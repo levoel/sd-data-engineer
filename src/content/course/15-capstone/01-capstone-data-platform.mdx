@@ -1,0 +1,222 @@
+---
+title: "Capstone: Design Data Platform для E-commerce"
+description: "End-to-end data platform: PostgreSQL CDC + clickstream + payments → Kafka → Lakehouse → BI + ML + real-time serving"
+order: 1
+difficulty: "advanced"
+estimatedTime: 30
+topics: ["Capstone", "Data Platform", "E-commerce", "Architecture", "CDC", "Lakehouse", "Real-time"]
+---
+
+# Capstone: Design Data Platform для E-commerce
+
+## Задача
+
+Спроектировать полную data platform для e-commerce компании: от source systems до serving layer. Применить все концепции из предыдущих модулей.
+
+## Requirements
+
+```
+Бизнес-контекст:
+  - E-commerce: 1M orders/day, 10M active users
+  - 50 product categories, 3 warehouses (fulfillment)
+  - Payment processing через внешний API
+
+Source Systems:
+  1. PostgreSQL (OLTP): orders, customers, products, inventory
+  2. Clickstream: user behavior events (page views, clicks, searches)
+  3. Payment API: payment status, refunds, chargebacks
+
+Consumers:
+  1. BI Dashboards: daily revenue, conversion funnel, cohort analysis
+  2. ML Models: recommendation engine, churn prediction, fraud detection
+  3. Real-time: live order tracking, inventory alerts, real-time metrics
+
+SLAs:
+  - BI: refresh every 1 hour, query time under 10 seconds
+  - ML: features updated daily, training weekly
+  - Real-time: end-to-end latency under 30 seconds
+  - Data quality: 99.5% completeness, 99.9% accuracy
+```
+
+## Architecture Design
+
+<DiagramContainer title="E-commerce Data Platform: End-to-End Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="PostgreSQL: orders, customers, products. CDC через Debezium">
+        <FlowNode variant="input">PostgreSQL (CDC)</FlowNode>
+      </Tooltip>
+      <Tooltip content="Clickstream: page views, clicks, searches. SDK → events">
+        <FlowNode variant="input">Clickstream API</FlowNode>
+      </Tooltip>
+      <Tooltip content="Payment API: payment status, refunds. Webhook → events">
+        <FlowNode variant="input">Payment API</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Kafka: central event bus. Topic per source table/event type">
+      <DataBox label="Apache Kafka" className="border-orange-500/30 w-64 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>cdc.orders, cdc.customers</div>
+          <div>clickstream.events</div>
+          <div>payments.status</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Lakehouse: Bronze → Silver → Gold на Iceberg + S3">
+      <DataBox label="Lakehouse (Iceberg + S3)" className="border-emerald-500/30 w-72 mx-auto">
+        <div className="text-xs space-y-1">
+          <div><Icon name="layers" className="text-orange-400" size="1.2em" /> Bronze: raw CDC + events (append-only)</div>
+          <div><Icon name="layers" className="text-slate-400" size="1.2em" /> Silver: cleaned, deduplicated, typed</div>
+          <div><Icon name="layers" className="text-yellow-400" size="1.2em" /> Gold: star schema, aggregates</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="BI: Looker/Metabase на Gold layer">
+        <DataBox label="BI" className="border-blue-500/30 w-28">
+          <div className="text-xs">Dashboards</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="ML: Feature Store (Feast) → training + serving">
+        <DataBox label="ML" className="border-purple-500/30 w-28">
+          <div className="text-xs">Features + Models</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Real-time: ClickHouse для live metrics + alerts">
+        <DataBox label="Real-time" className="border-yellow-500/30 w-28">
+          <div className="text-xs">Live Metrics</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Layer-by-Layer Design
+
+### Ingestion Layer
+
+```
+1. PostgreSQL → Kafka (Debezium CDC):
+   - Log-based CDC: reads WAL, minimal load on OLTP
+   - Topic per table: cdc.public.orders, cdc.public.customers
+   - Schema Registry: Avro schemas, backward compatibility
+   - Exactly-once: Kafka transactions + LSN tracking
+
+2. Clickstream → Kafka:
+   - SDK → HTTP API → Kafka producer
+   - Topic: clickstream.events (partitioned by user_id)
+   - Schema: {user_id, event_type, page_url, timestamp, metadata}
+   - Volume: ~100M events/day
+
+3. Payment API → Kafka:
+   - Webhook receiver → Kafka producer
+   - Topic: payments.status
+   - Idempotency: dedup by payment_id
+```
+
+### Processing Layer
+
+```
+Bronze (Spark Streaming, micro-batch every 5 min):
+  Kafka → append to Iceberg tables
+  No transformations, preserve raw format
+  Retention: 90 days
+
+Silver (Spark batch, hourly):
+  CDC: apply MERGE for latest state + SCD Type 2 for dimensions
+  Clickstream: sessionize (30-min window), enrich with user profile
+  Payments: join with orders, resolve final status
+  
+  Data Quality checks (Great Expectations):
+    - orders: amount >= 0, customer_id NOT NULL
+    - completeness: row count ± 10% from previous day
+    - freshness: MAX(updated_at) within 2 hours
+
+Gold (dbt, hourly after Silver):
+  Star Schema:
+    fact_orders: order metrics with dimension keys
+    dim_customer: SCD Type 2
+    dim_product: SCD Type 1
+    dim_date: static calendar
+  
+  Aggregates:
+    daily_revenue_by_region
+    hourly_conversion_funnel
+    customer_cohort_analysis
+```
+
+### Serving Layer
+
+```
+BI (Looker / Metabase):
+  Source: Gold tables (Iceberg → Trino/Spark SQL)
+  Refresh: hourly
+  Caching: pre-warm top-20 dashboards
+
+ML (Feast Feature Store):
+  Offline: Silver → Spark batch → feature tables (daily)
+  Online: materialize to Redis (latest values)
+  Features:
+    customer_order_count_365d, customer_avg_order_value
+    product_view_to_purchase_ratio, session_duration_avg
+  Models: recommendations (daily retrain), fraud (real-time scoring)
+
+Real-time (ClickHouse):
+  Source: Kafka → ClickHouse (Kafka engine)
+  Use cases: live order count, real-time revenue, inventory alerts
+  Materialized Views: pre-aggregate by minute/hour
+  Latency: p99 under 100ms
+```
+
+### Orchestration
+
+```
+Dagster (asset-centric):
+  Assets:
+    bronze_orders → silver_orders → gold_fact_orders → bi_dashboard
+    bronze_clickstream → silver_sessions → gold_conversion_funnel
+  
+  Sensors:
+    - Kafka lag sensor: trigger processing when lag > threshold
+    - S3 sensor: trigger on new file arrival
+  
+  Schedules:
+    - Bronze: every 5 minutes (micro-batch)
+    - Silver: hourly (after Bronze completes)
+    - Gold: hourly (after Silver completes)
+    - Features: daily (after Gold completes)
+```
+
+### Governance и Quality
+
+```
+Data Catalog: OpenMetadata
+  - Auto-discovery: Iceberg tables, Kafka topics, dbt models
+  - Column-level lineage: source → bronze → silver → gold → dashboard
+  - PII tagging: customer email, phone → masked in Silver
+
+Data Quality: Great Expectations + dbt tests
+  - Bronze: schema validation, freshness
+  - Silver: business rules, referential integrity
+  - Gold: aggregation accuracy, SLA freshness
+
+Alerting (tiered):
+  P1 (PagerDuty): pipeline failure, SLA breach
+  P2 (Slack): quality check failure, anomaly
+  P3 (ticket): schema drift, cost spike
+```
+
+<Callout type="note">
+**Это reference architecture.** В реальном проекте: начните с MVP (1 source → Bronze → Silver → Gold → 1 dashboard), затем итерируйте. Не стройте всё сразу — complexity kills projects.
+</Callout>
+
+<Callout type="tip">
+**Capstone checklist.** Проверьте свой дизайн по всем модулям курса: pipeline patterns (M02), batch (M03), streaming (M04), warehouse (M05), lakehouse (M06), modeling (M07), CDC (M08), quality (M09), orchestration (M10), governance (M11), features (M12), real-time (M13), cost (M14).
+</Callout>
+
+<KnowledgeCheck>
+Capstone essentials: E-commerce platform = CDC + clickstream + payments → Kafka → Lakehouse (Bronze/Silver/Gold) → BI + ML + Real-time. Key decisions: Iceberg for table format, Debezium for CDC, Star Schema for Gold, Feast for features, ClickHouse for real-time, Dagster for orchestration. Start with MVP, iterate. Вы завершили курс System Design для Data Engineer!
+</KnowledgeCheck>

@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "13-realtime-analytics/_exam",
+  "moduleId": "13-realtime-analytics",
+  "examTitle": "Экзамен: Real-time Analytics & Metrics",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m13-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m13-exam-q1",
+      "type": "multiple-choice",
+      "question": "SaaS product: user-facing analytics dashboard (каждый клиент видит свои метрики). 10K tenants, каждый с real-time data. Какой OLAP engine подходит лучше?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ClickHouse — best for general OLAP"
+        },
+        {
+          "id": "b",
+          "text": "Apache Druid — time-series optimized"
+        },
+        {
+          "id": "c",
+          "text": "Apache Pinot: оптимизирован для user-facing analytics с high concurrency. Multi-tenant isolation, real-time ingestion из Kafka, sub-second queries. LinkedIn, Uber, Stripe используют для customer-facing metrics"
+        },
+        {
+          "id": "d",
+          "text": "PostgreSQL с indexes"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел OLAP Engines сравнение",
+      "explanation": "Pinot designed for user-facing analytics: high concurrency (thousands of concurrent queries), multi-tenant data isolation, real-time ingestion. ClickHouse — excellent for internal analytics, but Pinot scales better for customer-facing with 10K+ tenants. Druid — good for time-series, less optimized for multi-tenant.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m13-exam-q2",
+      "type": "multiple-choice",
+      "question": "Dashboard запрашивает: 'revenue last 7 days' (обновляется ежеминутно) и 'revenue last 1 year' (обновляется ежечасно). Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один query на raw data для обоих"
+        },
+        {
+          "id": "b",
+          "text": "Cache both в Redis с TTL=1min"
+        },
+        {
+          "id": "c",
+          "text": "Pre-compute оба в один materialized view"
+        },
+        {
+          "id": "d",
+          "text": "Query federation: last 7 days → OLAP (ClickHouse, minute-level pre-aggregation). Last 1 year → Warehouse (BigQuery, daily aggregates). Semantic layer (Cube.js) роутит query к правильному backend. Transparent для dashboard"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Metrics Platform Design",
+      "explanation": "Query federation: route queries to optimal backend based on time range. Last 7d = fresh data → OLAP (minute aggregates, sub-second). Last 1y = historical → Warehouse (daily aggregates, seconds). Semantic layer abstracts this: dashboard sends one query, router picks backend. Cost: OLAP for hot data only, warehouse for cold.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m13-exam-q3",
+      "type": "multiple-choice",
+      "question": "Metrics platform: бизнес определяет 'активный пользователь' как 'user с >= 1 event за последние 30 дней'. 3 команды считают метрику по-разному (разные event types, разные time zones). Как стандартизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Написать документацию с определением"
+        },
+        {
+          "id": "b",
+          "text": "Semantic Layer (Cube.js / MetricFlow / dbt Metrics): одно определение active_user как code (YAML/SQL). Все consumers (dashboards, API, ad-hoc queries) используют одно определение. Версионирование через Git. Изменение определения → один PR, автоматически обновляет все downstream"
+        },
+        {
+          "id": "c",
+          "text": "Каждая команда считает по-своему — это нормально"
+        },
+        {
+          "id": "d",
+          "text": "Создать materialized view для каждой команды"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Semantic Layer и Metrics Standardization",
+      "explanation": "Semantic layer: metrics-as-code. Одно определение active_user: dimensions (event_type IN [...]), time_grain (30d), timezone (UTC). Все consumers query через semantic layer → consistent results. Documentation (a) без enforcement = drift. Materialized views per team (d) = N copies of same metric with different logic.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m13-exam-q4",
+      "type": "multiple-choice",
+      "question": "Real-time dashboard: 1000 concurrent users, каждый dashboard обновляется каждые 10 секунд. OLAP engine (ClickHouse) начинает деградировать. Как масштабировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Вертикально масштабировать ClickHouse — больше CPU/RAM"
+        },
+        {
+          "id": "b",
+          "text": "Caching layer: Redis/Dragonfly перед ClickHouse. Pre-compute popular queries → cache с TTL=10s. 1000 users × 10s = 100 QPS → cache hit rate 95%+ (большинство смотрят одни dashboard). ClickHouse нагрузка: 5 QPS (cache misses + refresh). Invalidation: event-driven при обновлении данных"
+        },
+        {
+          "id": "c",
+          "text": "Уменьшить refresh rate до 1 минуты"
+        },
+        {
+          "id": "d",
+          "text": "Переписать на PostgreSQL"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Caching Strategy для Real-time Dashboards",
+      "explanation": "Caching: 1000 users watching 50 dashboards = many duplicate queries. Cache popular aggregations in Redis. TTL=10s matches refresh rate. Cache hit ratio: 95%+ (most users see same dashboards). ClickHouse handles only cache misses + periodic refresh. Vertical scaling (a) = expensive, limited. Reducing refresh (c) = degraded UX. PostgreSQL (d) = wrong tool for OLAP.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

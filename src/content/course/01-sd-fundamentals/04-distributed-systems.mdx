@@ -1,0 +1,175 @@
+---
+title: "Основы распределённых систем для Data Engineering"
+description: "CAP-теорема, consistency models, partitioning и replication — применительно к data systems"
+order: 4
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Distributed Systems", "CAP Theorem", "Partitioning", "Replication"]
+---
+
+
+# Распределённые системы для Data Engineering
+
+## Почему Data Engineer должен знать distributed systems
+
+Каждый инструмент data engineering — Spark, Kafka, Flink, Airflow — это **распределённая система**. Когда Spark job fails с «shuffle write error» или Kafka consumer lag растёт — вы диагностируете проблемы распределённой системы. Без понимания фундаментальных принципов вы будете гуглить error messages вместо того, чтобы понимать **почему** это происходит.
+
+## CAP-теорема в контексте Data Systems
+
+В распределённой системе невозможно одновременно гарантировать:
+- **C** — Consistency (все узлы видят одинаковые данные)
+- **A** — Availability (каждый запрос получает ответ)
+- **P** — Partition Tolerance (система работает при сетевых сбоях)
+
+### Как CAP применяется к data tools
+
+| Инструмент | Выбор CAP | Поведение при partition |
+|-----------|-----------|----------------------|
+| **PostgreSQL** (single node) | CA | Нет partitions — single node |
+| **Cassandra** | AP | Доступна, но может читать stale data |
+| **Kafka** | CP (per partition) | Лидер partition недоступен — запись blocked |
+| **HDFS/S3** | AP | Eventual consistency (S3: read-after-write) |
+| **ZooKeeper** | CP | Minority nodes отказывают в обслуживании |
+
+<Callout type="note">
+**Для Data Engineering CAP значит:**
+
+- При batch processing (Spark) — consistency менее критична (данные обрабатываются с задержкой в любом случае)
+- При streaming (Kafka→Flink) — consistency критична для exactly-once semantics
+- При serving (BI queries) — availability важнее strict consistency
+</Callout>
+
+## Partitioning (Шардирование данных)
+
+**Partitioning** — разделение данных на части для параллельной обработки. Это **основа** высокой производительности в data engineering.
+
+### Типы партиционирования
+
+<DiagramContainer title="Стратегии партиционирования" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Данные делятся по значению колонки. Типичный пример: event_date. Запросы с фильтром по дате читают только нужные партиции.">
+      <DataBox label="Range Partitioning" className="border-blue-500/30">
+        <div className="text-xs">
+          <div>Колонка: event_date</div>
+          <div className="mt-1">P1: 2026-01-01..01-31</div>
+          <div>P2: 2026-02-01..02-28</div>
+          <div>P3: 2026-03-01..03-31</div>
+          <div className="text-emerald-400 mt-1"><Icon name="check" className="text-emerald-400" size="1.2em" /> Для time-series</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Данные распределяются по хешу ключа. Равномерное распределение, но range queries невозможны.">
+      <DataBox label="Hash Partitioning" className="border-purple-500/30">
+        <div className="text-xs">
+          <div>Key: user_id</div>
+          <div className="mt-1">P1: hash(uid) % 4 == 0</div>
+          <div>P2: hash(uid) % 4 == 1</div>
+          <div>P3: hash(uid) % 4 == 2</div>
+          <div className="text-emerald-400 mt-1"><Icon name="check" className="text-emerald-400" size="1.2em" /> Равномерная нагрузка</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Данные делятся по конкретным значениям. Например, по стране или категории.">
+      <DataBox label="List Partitioning" className="border-orange-500/30">
+        <div className="text-xs">
+          <div>Колонка: country</div>
+          <div className="mt-1">P1: [RU, BY, KZ]</div>
+          <div>P2: [US, CA, UK]</div>
+          <div>P3: [DE, FR, IT]</div>
+          <div className="text-emerald-400 mt-1"><Icon name="check" className="text-emerald-400" size="1.2em" /> Для geo-разделения</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### Партиционирование в data tools
+
+| Инструмент | Партиционирование | Ключевой параметр |
+|-----------|-------------------|-------------------|
+| **Spark** | RDD/DataFrame partitions | `spark.sql.shuffle.partitions` |
+| **Kafka** | Topic partitions | `num.partitions` |
+| **Hive/Iceberg** | Table partitions | `PARTITIONED BY (date)` |
+| **Cassandra** | Partition key | `PRIMARY KEY ((partition_key), ...)` |
+
+<Callout type="warning">
+**Data Skew — враг партиционирования**
+
+Если один ключ имеет непропорционально много записей (hot key), одна партиция получает больше данных. В Spark это вызывает «straggler task» — один task работает часами, пока остальные давно завершились. Решения: salting, broadcast join, AQE skew join.
+</Callout>
+
+## Replication (Репликация)
+
+**Replication** — копирование данных на несколько узлов для отказоустойчивости и производительности чтения.
+
+### Модели репликации
+
+| Модель | Как работает | Когда использовать |
+|--------|-------------|-------------------|
+| **Leader-Follower** | Запись → leader, чтение → leader или follower | PostgreSQL, Kafka (ISR) |
+| **Multi-Leader** | Запись → любой leader, синхронизация | Геораспределённые БД |
+| **Leaderless** | Запись → W узлов из N, чтение → R узлов из N | Cassandra, DynamoDB |
+
+### Репликация в Kafka
+
+```
+Kafka Topic: orders (3 partitions, replication-factor=3)
+
+Partition 0: [Broker 1 (leader)] → [Broker 2 (ISR)] → [Broker 3 (ISR)]
+Partition 1: [Broker 2 (leader)] → [Broker 3 (ISR)] → [Broker 1 (ISR)]
+Partition 2: [Broker 3 (leader)] → [Broker 1 (ISR)] → [Broker 2 (ISR)]
+
+ISR = In-Sync Replica
+Запись: producer → leader → реплики подтягивают
+Чтение: consumer → leader (по умолчанию)
+```
+
+## Consistency Models
+
+### Strong Consistency
+Каждое чтение возвращает **последнюю запись**. Дорого, медленно.
+- Пример: PostgreSQL transaction isolation SERIALIZABLE
+
+### Eventual Consistency
+Чтение может вернуть **устаревшие данные**, но со временем все узлы синхронизируются.
+- Пример: S3 (read-after-write consistency для PUT, eventual для DELETE)
+
+### Read-Your-Writes
+Вы видите свои собственные записи, но можете не видеть чужие.
+- Пример: многие web-приложения с session stickiness
+
+### Применение к Data Engineering
+
+| Слой Data Pipeline | Нужная Consistency | Почему |
+|-------------------|-------------------|--------|
+| Ingestion (Kafka) | Eventual (per partition: ordered) | Высокий throughput важнее strict consistency |
+| Processing (Spark) | Strong (within job) | Трансформации должны быть корректны |
+| Storage (Lakehouse) | ACID (per table) | Delta/Iceberg обеспечивают ACID |
+| Serving (BI) | Read-your-writes | Аналитик видит свои обновления |
+
+## Ключевые формулы
+
+### Throughput и Partition Sizing
+
+```
+Throughput = N_partitions × throughput_per_partition
+
+Пример:
+- Kafka topic: 100 partitions × 10 MB/s = 1 GB/s max throughput
+- Spark job: 200 partitions × 1 task/partition × 30 сек/task = ~100 сек total
+```
+
+### Replication Factor и Availability
+
+```
+Availability = 1 - (failure_probability)^replication_factor
+
+Пример (failure_probability = 0.01):
+- RF=1: availability = 99%
+- RF=2: availability = 99.99%
+- RF=3: availability = 99.9999%
+```
+
+<KnowledgeCheck>
+Partitioning, replication и consistency models — это не абстрактная теория. Каждый раз, когда вы настраиваете `spark.sql.shuffle.partitions`, выбираете `replication-factor` для Kafka, или решаете между Delta Lake и raw Parquet — вы принимаете решения о распределённой системе. В следующем уроке: пошаговый framework для решения system design задач.
+</KnowledgeCheck>

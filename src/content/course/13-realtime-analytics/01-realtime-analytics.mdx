@@ -1,0 +1,179 @@
+---
+title: "Real-time Analytics & Metrics"
+description: "OLAP engines (ClickHouse, Druid, Pinot), materialized views, pre-aggregation, metrics platform design"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 23
+topics: ["Real-time Analytics", "ClickHouse", "Druid", "Pinot", "OLAP", "Materialized Views", "Pre-aggregation"]
+---
+
+# Real-time Analytics & Metrics
+
+## Когда Warehouse не хватает
+
+Warehouse (BigQuery, Snowflake) оптимизирован для batch-аналитики: запросы за секунды-минуты на исторических данных. Но real-time dashboards, metrics API, и sub-second queries требуют другого подхода.
+
+```
+Warehouse query:
+  SELECT region, SUM(revenue) FROM orders
+  WHERE date BETWEEN '2024-01-01' AND '2024-12-31'
+  GROUP BY region
+  → 3-15 seconds [OK] для BI отчёта
+  → [NO] для API endpoint (SLA: 200ms)
+  → [NO] для live dashboard (обновление каждые 5 сек)
+```
+
+## OLAP Engines: ClickHouse vs Druid vs Pinot
+
+<DiagramContainer title="OLAP Engine Comparison: ClickHouse vs Druid vs Pinot">
+<Grid columns={4}>
+  <Tooltip content="Ключевые характеристики для выбора OLAP engine">
+    <DataBox label="Metric" />
+  </Tooltip>
+  <Tooltip content="ClickHouse — open-source columnar OLAP от Yandex. Самый простой в deployment (single binary). Полноценный SQL с JOINs. Идеален для general-purpose OLAP и log analytics">
+    <DataBox label="ClickHouse" />
+  </Tooltip>
+  <Tooltip content="Apache Druid — event-driven OLAP от Metamarkets. Segment-based storage оптимизирован для time-series. Высокий concurrency, но ограниченный SQL">
+    <DataBox label="Apache Druid" />
+  </Tooltip>
+  <Tooltip content="Apache Pinot — real-time OLAP от LinkedIn. Оптимизирован для user-facing analytics с low-latency guarantees. Используется в LinkedIn, Uber, Stripe">
+    <DataBox label="Apache Pinot" />
+  </Tooltip>
+
+  <Tooltip content="Query latency определяет годится ли engine для API endpoints (SLA: 200ms) или только для BI dashboards">
+    <FlowNode label="Query Latency" />
+  </Tooltip>
+  <Tooltip content="10-100ms для большинства запросов. MergeTree engine оптимизирует сканирование. Подходит для sub-100ms API endpoints">
+    <DataBox label="10-100ms" />
+  </Tooltip>
+  <Tooltip content="50-500ms типично. Быстрый для time-series aggregations, медленнее для complex queries с GROUP BY по высококардинальным полям">
+    <DataBox label="50-500ms" />
+  </Tooltip>
+  <Tooltip content="10-100ms для pre-defined queries. Star-tree index обеспечивает consistent low latency для user-facing SLA">
+    <DataBox label="10-100ms" />
+  </Tooltip>
+
+  <Tooltip content="SQL support определяет flexibility — смогут ли аналитики писать ad-hoc запросы">
+    <FlowNode label="SQL Support" />
+  </Tooltip>
+  <Tooltip content="Полноценный SQL dialect с JOINs, subqueries, window functions. Ближе всего к PostgreSQL синтаксису">
+    <DataBox label="Full SQL + JOINs" />   </Tooltip>
+  <Tooltip content="SQL-like через Druid SQL layer. JOINs ограничены (lookup joins). Complex analytics может требовать pre-processing">
+    <DataBox label="SQL-like, limited JOINs" />   </Tooltip>
+  <Tooltip content="Multi-stage query engine добавляет поддержку JOINs, но исторически ограничен. Активно развивается">
+    <DataBox label="SQL (multi-stage)" />   </Tooltip>
+
+  <Tooltip content="Операционная сложность — сколько усилий на deploy, maintain и troubleshoot в production">
+    <FlowNode label="Operations" />
+  </Tooltip>
+  <Tooltip content="Проще всех: single binary, можно запустить на одном сервере. Cluster mode через ReplicatedMergeTree и ZooKeeper/ClickHouse Keeper">
+    <DataBox label="Simple (single binary)" />   </Tooltip>
+  <Tooltip content="Сложнее: состоит из 5+ сервисов (Historical, MiddleManager, Broker, Coordinator, Router). Требует deep expertise для production">
+    <DataBox label="Complex (many services)" />   </Tooltip>
+  <Tooltip content="Сложный: Controller, Server, Broker, Minion components. Production setup требует значительного опыта. Зато — battle-tested в LinkedIn">
+    <DataBox label="Complex (multiple roles)" />   </Tooltip>
+</Grid>
+</DiagramContainer>
+
+| Feature | ClickHouse | Apache Druid | Apache Pinot |
+|---------|-----------|-------------|-------------|
+| **Creator** | Yandex | Metamarkets | LinkedIn |
+| **Query latency** | 10-100ms | 50-500ms | 10-100ms |
+| **Ingestion** | Batch + Kafka | Batch + Kafka | Batch + Kafka |
+| **Storage** | Column-oriented, MergeTree | Segment-based | Segment-based |
+| **SQL support** | Full SQL | SQL-like (Druid SQL) | SQL (multi-stage) |
+| **Joins** | Supported | Limited | Limited |
+| **Scaling** | Sharding + replication | Horizontal | Horizontal |
+| **Operations** | Simpler (single binary) | Complex (many services) | Complex |
+| **Best for** | General OLAP, logs | Time-series, events | User-facing metrics |
+
+```
+Decision guide:
+  Need JOINs + complex SQL → ClickHouse
+  Time-series events, high concurrency → Druid
+  User-facing analytics (SaaS metrics) → Pinot
+  Already have Warehouse → Materialized Views first
+```
+
+## Materialized Views
+
+```
+Materialized View = pre-computed query result, stored as table
+
+-- ClickHouse Materialized View
+CREATE MATERIALIZED VIEW revenue_by_region
+ENGINE = SummingMergeTree()
+ORDER BY (region, date)
+AS SELECT
+  region,
+  toDate(created_at) AS date,
+  sum(amount) AS daily_revenue,
+  count() AS order_count
+FROM orders
+GROUP BY region, date
+
+-- Query: 2ms instead of 2 seconds
+SELECT region, sum(daily_revenue)
+FROM revenue_by_region
+WHERE date >= today() - 30
+GROUP BY region
+```
+
+## Pre-aggregation Patterns
+
+```
+Level 0: Raw events (TB scale)
+  orders: order_id, user_id, amount, created_at
+  → Full flexibility, slow queries
+
+Level 1: Minute aggregates
+  orders_1m: minute, region, count, sum_amount
+  → 1440 rows/day per region
+
+Level 2: Hourly aggregates
+  orders_1h: hour, region, count, sum_amount
+  → 24 rows/day per region
+
+Level 3: Daily aggregates
+  orders_1d: date, region, count, sum_amount
+  → 1 row/day per region
+
+Trade-off: each level loses granularity but gains speed
+Query routing: last 1h → Level 1, last 7d → Level 2, last 1y → Level 3
+```
+
+## Metrics Platform Design
+
+```
+Architecture:
+
+  Sources → Kafka → OLAP Engine → Metrics API → Dashboards
+                                              → Alerting
+                                              → Embedding
+
+Components:
+  1. Semantic Layer (Cube.js / MetricFlow):
+     Define metrics ONCE, query everywhere
+     metric: revenue = SUM(amount) WHERE status = 'completed'
+     
+  2. Caching Layer:
+     Redis cache for hot queries (TTL = 60s)
+     Pre-warming: compute top-50 dashboards every minute
+     
+  3. Query Federation:
+     Last 1 hour → OLAP (ClickHouse)
+     Last 1 year → Warehouse (BigQuery)
+     Transparent routing for users
+```
+
+<Callout type="tip">
+**Warehouse vs OLAP — не вместо, а вместе.** Warehouse для batch analytics и ad-hoc queries (аналитики). OLAP для real-time dashboards и metrics API (продукт, операции). Данные из одного lakehouse, served в оба.
+</Callout>
+
+<Callout type="warning">
+**Anti-pattern: OLAP для всего.** ClickHouse/Druid не заменяют warehouse. Они не подходят для: ad-hoc JOINs по 20 таблицам, ML feature computation, complex transformations. Используйте OLAP для pre-defined metrics с sub-second SLA.
+</Callout>
+
+<KnowledgeCheck>
+Real-time Analytics essentials: OLAP engines (ClickHouse, Druid, Pinot) = sub-second queries. Materialized Views = pre-computed aggregates. Pre-aggregation: raw → minute → hour → day (trade granularity for speed). Metrics Platform: semantic layer + caching + query federation. OLAP дополняет warehouse, не заменяет. В следующем модуле: Cost Optimization.
+</KnowledgeCheck>

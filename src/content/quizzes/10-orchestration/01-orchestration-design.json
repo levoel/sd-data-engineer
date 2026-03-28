@@ -1,0 +1,57 @@
+{
+  "lessonSlug": "10-orchestration/01-orchestration-design",
+  "moduleId": "10-orchestration",
+  "_meta": {
+    "idPrefix": "sdde-m10-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m10-01-q1",
+      "type": "multiple-choice",
+      "question": "Airflow DAG имеет 150 tasks в одном файле. Deploy занимает 10 минут, debugging невозможен, один failure блокирует весь pipeline. Как рефакторить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Разбить God DAG: один DAG per domain (orders_pipeline, users_pipeline, products_pipeline). Межdag dependencies через Airflow Datasets или sensors. 150 tasks → 5 DAGs по 30 tasks. Независимый deploy, isolated failures"
+        },
+        {
+          "id": "b",
+          "text": "Добавить больше retry и увеличить timeout"
+        },
+        {
+          "id": "c",
+          "text": "Переписать весь pipeline на bash scripts"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить Airflow parallelism"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "God DAG anti-pattern: 150 tasks = unmanageable. Решение: decompose по domain boundaries. Airflow Datasets (2.4+): DAG A produces dataset → DAG B triggered when dataset updated. Преимущества: isolated failures, independent deploy, readable code, faster debugging.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m10-01-q2",
+      "type": "multiple-choice",
+      "question": "Greenfield проект. Команда из 5 data engineers, Python-first. Нужен modern orchestrator с хорошим DX. Что выбрать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Dagster: asset-centric model (define what, not how), unit-test friendly, built-in type checking, modern UI с lineage. Для greenfield Python-first команды — лучший DX. Software-defined assets = natural for data pipelines"
+        },
+        {
+          "id": "b",
+          "text": "Airflow — industry standard, но dated DX"
+        },
+        {
+          "id": "c",
+          "text": "cron jobs — простейший вариант"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Dagster для greenfield: 1) Asset-centric model maps naturally to data pipelines (tables = assets), 2) Unit testing without execution context, 3) Type system catches errors at dev time, 4) Modern UI with lineage. Airflow — если existing infrastructure или team уже знает Airflow.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

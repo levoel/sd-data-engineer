@@ -1,0 +1,165 @@
+---
+title: "Kafka Architecture для System Design"
+description: "Apache Kafka: topics, partitions, consumer groups, и их влияние на проектирование streaming систем"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Kafka", "Topics", "Partitions", "Consumer Groups", "Replication", "Ordering"]
+---
+
+# Kafka Architecture для System Design
+
+## Kafka как Central Nervous System
+
+Kafka — не просто message broker. Это **distributed commit log** — append-only журнал, который хранит события и позволяет множеству потребителей читать их независимо.
+
+<DiagramContainer title="Kafka: Producers → Topics → Consumers" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Producers: сервисы, которые пишут события в Kafka">
+        <FlowNode variant="input">Producer A</FlowNode>
+      </Tooltip>
+      <FlowNode variant="input">Producer B</FlowNode>
+      <FlowNode variant="input">Producer C</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Topic: логический канал для категории событий. Состоит из partitions.">
+      <DataBox label="Topic: orders (3 partitions)" className="border-orange-500/30 w-72 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>Partition 0: [msg1, msg4, msg7, ...]</div>
+          <div>Partition 1: [msg2, msg5, msg8, ...]</div>
+          <div>Partition 2: [msg3, msg6, msg9, ...]</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Consumer Group: группа consumers, где каждый partition назначен одному consumer">
+        <FlowNode variant="output">Consumer Group A</FlowNode>
+      </Tooltip>
+      <FlowNode variant="output">Consumer Group B</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Partitions: единица параллелизма
+
+### Ordering Guarantees
+
+```
+Kafka ordering:
+  [OK] WITHIN partition: messages ordered (FIFO)
+  [NO] ACROSS partitions: no ordering guarantee
+
+Implication for design:
+  Messages that must be ordered → same partition key
+  
+  Order events for user_123:
+    key = "user_123" → hash("user_123") % 3 = partition 1
+    All events for user_123 → partition 1 → ordered [OK]
+```
+
+### Partition Count Trade-offs
+
+| Few partitions (3-10) | Many partitions (100+) |
+|----------------------|----------------------|
+| Lower overhead | Higher parallelism |
+| Easier to manage | More consumer instances possible |
+| Less rebalancing time | Better throughput |
+| **When:** low volume, ordering critical | **When:** high volume, many consumers |
+
+```
+Rule of thumb:
+  partition_count ≥ max_consumer_instances (for full parallelism)
+  partition_count ≈ target_throughput / throughput_per_partition
+  
+  Example: 100 MB/s needed, 10 MB/s per partition → 10+ partitions
+```
+
+## Consumer Groups
+
+```
+Consumer Group mechanics:
+  Topic: orders (6 partitions)
+  Consumer Group "analytics": 3 consumers
+  
+  Assignment:
+    Consumer 1: [P0, P1]
+    Consumer 2: [P2, P3]
+    Consumer 3: [P4, P5]
+  
+  Each partition → exactly ONE consumer in group
+  Each consumer → 1+ partitions
+  
+  Scale up: add Consumer 4 → rebalance → each gets ~1.5 partitions
+  Scale beyond 6: 7th consumer is IDLE (more consumers than partitions = waste)
+```
+
+<Callout type="warning">
+**Max consumers = partition count**
+
+Нельзя иметь больше active consumers в group, чем partitions. Если нужно 20 parallel consumers → нужно минимум 20 partitions. Планируйте partition count с учётом будущего масштабирования.
+</Callout>
+
+## Delivery Semantics
+
+| Semantic | Description | Use Case |
+|----------|------------|----------|
+| **At-most-once** | Message may be lost, never duplicated | Metrics, logs (loss OK) |
+| **At-least-once** | Message never lost, may be duplicated | Default for most pipelines |
+| **Exactly-once** | Message delivered exactly once | Financial, billing (costly to implement) |
+
+```
+Exactly-once in Kafka:
+  Producer: enable.idempotence=true + transactional.id
+  Consumer: read_committed isolation
+  Processing: idempotent writes (upsert, partition overwrite)
+  
+  Trade-off: higher latency, lower throughput
+```
+
+## Design Decisions
+
+### 1. Topic Design
+
+```
+Topic naming: {domain}.{entity}.{version}
+  orders.created.v1
+  payments.processed.v2
+  users.updated.v1
+
+One topic per event type (not per service)
+  [OK] orders.created, orders.updated, orders.cancelled
+  [NO] order-service-events (mixed event types)
+```
+
+### 2. Key Selection
+
+```
+Key determines partition assignment:
+  key = user_id → all events for user in same partition (ordered)
+  key = order_id → all events for order in same partition
+  key = null → round-robin across partitions (no ordering)
+  
+Choose key based on required ordering:
+  Need user event ordering? → key = user_id
+  Need order lifecycle ordering? → key = order_id
+  No ordering needed? → key = null (best distribution)
+```
+
+### 3. Retention
+
+```
+Retention strategies:
+  Time-based: retention.ms = 604800000 (7 days)
+  Size-based: retention.bytes = 107374182400 (100 GB)
+  Compacted: keep latest value per key (infinite, deduplicated)
+  
+  Bronze layer: long retention (30-90 days) — source of truth
+  Intermediate: short retention (1-7 days) — processing
+  Compacted: CDC topics (latest state per entity)
+```
+
+<KnowledgeCheck>
+Kafka SD essentials: topics (logical channels), partitions (parallelism unit), consumer groups (scaling consumers), ordering (per-partition only), delivery semantics (at-least-once default). Key selection determines ordering and distribution. В следующем уроке: Flink и stream processing patterns.
+</KnowledgeCheck>

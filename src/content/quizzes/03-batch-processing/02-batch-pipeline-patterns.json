@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "03-batch-processing/02-batch-pipeline-patterns",
+  "moduleId": "03-batch-processing",
+  "_meta": {
+    "idPrefix": "sdde-m03-02"
+  },
+  "questions": [
+    {
+      "id": "sdde-m03-02-q1",
+      "type": "multiple-choice",
+      "question": "Pipeline пишет результаты через df.write.mode('append'). Pipeline упал посередине и был перезапущен. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Дубликаты: append mode добавит уже записанные данные повторно. Решение: idempotent write через partition overwrite (mode='overwrite' + partitionBy)"
+        },
+        {
+          "id": "b",
+          "text": "Данные будут корректными — Spark обрабатывает retry автоматически"
+        },
+        {
+          "id": "c",
+          "text": "Pipeline откажет запускаться повторно"
+        },
+        {
+          "id": "d",
+          "text": "Spark автоматически дедуплицирует"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Append mode + retry = duplicates. Часть данных записана до crash, rerun записывает всё заново → duplicates. Idempotent write: partitionBy('date') + mode('overwrite') → rerun перезаписывает целую partition → no duplicates, same result.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m03-02-q2",
+      "type": "true-false",
+      "question": "Incremental processing (обрабатывать только новые данные) всегда лучше Full Refresh (обрабатывать все данные).",
+      "correctAnswer": false,
+      "explanation": "Не всегда. Full Refresh проще (нет watermarks, нет late data handling) и гарантирует корректность. Для маленьких datasets (< 10 GB) Full Refresh часто быстрее чем overhead incremental logic. Incremental лучше для: large datasets (100+ GB), where full reprocessing too expensive.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

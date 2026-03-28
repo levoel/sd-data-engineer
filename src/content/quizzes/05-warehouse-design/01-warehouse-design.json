@@ -1,0 +1,79 @@
+{
+  "lessonSlug": "05-warehouse-design/01-warehouse-design",
+  "moduleId": "05-warehouse-design",
+  "_meta": {
+    "idPrefix": "sdde-m05-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m05-01-q1",
+      "type": "multiple-choice",
+      "question": "Аналитик жалуется на медленные запросы: каждый BI-отчёт делает 7 JOINs через нормализованные таблицы. Какая модель решит проблему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ещё больше нормализовать (5NF)"
+        },
+        {
+          "id": "b",
+          "text": "Перейти на NoSQL"
+        },
+        {
+          "id": "c",
+          "text": "Star Schema: денормализовать dimensions → fact table + 1-level JOINs. Один JOIN вместо семи, columnar storage (Parquet) оптимизирован для wide reads"
+        },
+        {
+          "id": "d",
+          "text": "Добавить indexes на все таблицы"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Star Schema денормализует dimensions до одного уровня JOIN от fact table. 7 JOINs → 1-4 JOINs. Columnar storage (Parquet/ORC) оптимально для аналитических запросов с SELECT по нескольким колонкам из wide table.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m05-01-q2",
+      "type": "multiple-choice",
+      "question": "Клиент переехал из Москвы в Казань. Нужно сохранить историю для корректных исторических отчётов. Какой SCD Type использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SCD Type 1: перезаписать city = 'Казань'. Все исторические отчёты покажут Казань"
+        },
+        {
+          "id": "b",
+          "text": "SCD Type 0: не обновлять, оставить Москва навсегда"
+        },
+        {
+          "id": "c",
+          "text": "SCD Type 2: новая строка с valid_from/valid_to. Исторические отчёты JOIN по date range → корректный город на момент заказа"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "SCD Type 2 создаёт новую строку: (customer_id=1, city='Казань', valid_from='2024-06-15', valid_to='9999-12-31'). Старая строка: valid_to='2024-06-15'. JOIN fact → dimension по date range → отчёт за 2023 покажет Москва, за 2025 — Казань.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m05-01-q3",
+      "type": "multiple-choice",
+      "question": "Enterprise с 15 разными source systems, частыми schema changes, и требованием полного аудита. Какая модель подходит лучше всего?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Data Vault: Hubs (бизнес-ключи) + Links (связи) + Satellites (атрибуты с историей). Гибкость для множества sources, полный аудит через timeline satellites"
+        },
+        {
+          "id": "b",
+          "text": "OBT (One Big Table) — все данные в одной таблице"
+        },
+        {
+          "id": "c",
+          "text": "Star Schema — простая, но не масштабируется на 15 sources с разными schemas"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Data Vault: Hub_Customer (business key), Sat_Customer (attributes + load_date + source). 15 sources → 15 satellites для одного hub, каждый с полной историей. Schema changes → новый satellite, существующие не затронуты. Star Schema не масштабируется при частых schema changes от множества sources.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

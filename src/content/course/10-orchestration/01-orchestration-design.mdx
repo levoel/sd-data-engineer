@@ -1,0 +1,230 @@
+---
+title: "Orchestration & Workflow Design"
+description: "Airflow vs Dagster vs Prefect, DAG design patterns, dynamic DAGs, sensors, backfill, testing"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 24
+topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Backfill", "Sensors"]
+---
+
+# Orchestration & Workflow Design
+
+## Зачем оркестратор
+
+Оркестратор — мозг data platform. Он координирует: что запускать, когда, в каком порядке, что делать при сбое.
+
+```
+Без оркестратора:
+  30 cron jobs, неизвестный порядок, нет retry,
+  при сбое — ручное расследование, нет lineage
+
+С оркестратором:
+  DAG определяет зависимости, автоматический retry,
+  alerting, backfill, monitoring, lineage
+```
+
+## Airflow vs Dagster vs Prefect
+
+<Grid columns={4}>
+  <div className="font-semibold text-slate-300">Feature</div>
+  <div className="font-semibold text-blue-400">Airflow</div>
+  <div className="font-semibold text-emerald-400">Dagster</div>
+  <div className="font-semibold text-orange-400">Prefect</div>
+
+  <div>Модель</div>
+  <div>Task-centric DAGs</div>
+  <div>Asset-centric</div>
+  <div>Flow + Task</div>
+
+  <div>Paradigm</div>
+  <div>DAG = Python file</div>
+  <div>Software-defined assets</div>
+  <div>Decorators (@flow, @task)</div>
+
+  <div>Testing</div>
+  <div>Сложно (execution context)</div>
+  <div>Unit-test friendly</div>
+  <div>Unit-test friendly</div>
+
+  <div>Dynamic DAGs</div>
+  <div>Через Jinja/TaskFlow API</div>
+  <div>Native (assets graph)</div>
+  <div>Native (dynamic tasks)</div>
+
+  <div>UI</div>
+  <div>Зрелый, Grid/Graph/Gantt</div>
+  <div>Asset-oriented, lineage</div>
+  <div>Cloud UI, logs</div>
+
+  <div>Scaling</div>
+  <div>Celery/K8s executor</div>
+  <div>K8s, Dagster Cloud</div>
+  <div>Workers, Prefect Cloud</div>
+
+  <div>Community</div>
+  <div>Самое большое</div>
+  <div>Растущее</div>
+  <div>Среднее</div>
+
+  <div>Best For</div>
+  <div>Legacy, large teams</div>
+  <div>Modern data stack</div>
+  <div>Python-first teams</div>
+</Grid>
+
+<DiagramContainer title="Orchestration Engines: Airflow vs Dagster vs Prefect">
+<Grid columns={4}>
+  <Tooltip content="Категория сравнения оркестраторов">
+    <DataBox label="Feature" />
+  </Tooltip>
+  <Tooltip content="Apache Airflow — зрелый industry standard с самым большим community. Task-centric DAG model. Лучший выбор для legacy проектов и больших команд с existing infrastructure">
+    <DataBox label="Airflow" />
+  </Tooltip>
+  <Tooltip content="Dagster — modern alternative от Elementl. Asset-centric подход: вместо 'запусти task' → 'обнови asset'. Лучший developer experience и встроенный lineage">
+    <DataBox label="Dagster" />
+  </Tooltip>
+  <Tooltip content="Prefect — Python-first orchestrator с минимальным boilerplate. Decorator-based API (@flow, @task). Идеален для Python-heavy команд">
+    <DataBox label="Prefect" />
+  </Tooltip>
+
+  <Tooltip content="Базовая парадигма определяет как вы думаете о pipeline: как о задачах, ассетах, или потоках">
+    <FlowNode label="Paradigm" />
+  </Tooltip>
+  <Tooltip content="DAG = Python файл. Каждый task — оператор (PythonOperator, SparkSubmitOperator). Execution context передаётся через XCom">
+    <DataBox label="Task-centric DAGs" />
+  </Tooltip>
+  <Tooltip content="Software-defined assets: вы описываете ЧТО нужно (данные), а не КАК (задачи). Dagster строит граф зависимостей автоматически">
+    <DataBox label="Software-defined Assets" />
+  </Tooltip>
+  <Tooltip content="Decorators @flow и @task превращают обычные Python-функции в orchestrated pipeline. Минимальный boilerplate">
+    <DataBox label="@flow + @task Decorators" />
+  </Tooltip>
+
+  <Tooltip content="Тестируемость — ключевой фактор для CI/CD и reliability">
+    <FlowNode label="Testability" />
+  </Tooltip>
+  <Tooltip content="Тестирование Airflow DAGs сложно: execution context, connections, XCom — всё нужно мокать. Высокий порог входа для unit tests">
+    <DataBox label="Complex (mock context)" />   </Tooltip>
+  <Tooltip content="Dagster спроектирован для тестов: ресурсы инжектируются, assets тестируются изолированно. Unit test = вызов Python функции">
+    <DataBox label="Unit-test friendly" />   </Tooltip>
+  <Tooltip content="Prefect tasks — обычные Python функции. Можно тестировать напрямую без mock infrastructure. Простейший из трёх">
+    <DataBox label="Unit-test friendly" />   </Tooltip>
+
+  <Tooltip content="Масштабирование определяет ceiling — максимальную нагрузку, которую оркестратор выдержит">
+    <FlowNode label="Scaling" />
+  </Tooltip>
+  <Tooltip content="Celery executor для distributed, KubernetesExecutor для K8s. Production-proven на тысячах DAGs. Требует настройки metadata DB и очередей">
+    <DataBox label="Celery / K8s Executor" />
+  </Tooltip>
+  <Tooltip content="K8s native + Dagster Cloud managed. Каждый run в отдельном pod. Хорошая изоляция, но managed версия платная">
+    <DataBox label="K8s / Dagster Cloud" />
+  </Tooltip>
+  <Tooltip content="Workers + Prefect Cloud. Agents запускают flows на workers. Cloud управляет scheduling. Простая модель, но зависимость от cloud">
+    <DataBox label="Workers / Prefect Cloud" />
+  </Tooltip>
+
+  <Tooltip content="Рекомендация по выбору зависит от контекста проекта и команды">
+    <FlowNode label="Best For" />
+  </Tooltip>
+  <Tooltip content="Airflow — безопасный выбор для: existing infrastructure, large ops teams, regulated industries с compliance requirements">
+    <DataBox label="Legacy, large teams" />
+  </Tooltip>
+  <Tooltip content="Dagster — лучший выбор для: greenfield проектов, data mesh, команд, которые хотят asset-centric lineage из коробки">
+    <DataBox label="Modern data stack" />
+  </Tooltip>
+  <Tooltip content="Prefect — лучший выбор для: Python-centric команд, ML pipelines, быстрого прототипирования без infrastructure overhead">
+    <DataBox label="Python-first teams" />
+  </Tooltip>
+</Grid>
+</DiagramContainer>
+
+## DAG Design Patterns
+
+### 1. Fan-out / Fan-in
+
+```python
+# Airflow: parallel processing → merge
+extract >> [transform_a, transform_b, transform_c] >> merge >> load
+
+# Use case: process multiple source tables in parallel,
+# then merge results into final table
+```
+
+### 2. Sensor Pattern
+
+```python
+# Wait for external event before processing
+file_sensor = S3KeySensor(
+    bucket='raw-data',
+    bucket_key='orders/{{ ds }}/*.parquet',
+    timeout=3600,  # 1 hour max wait
+    poke_interval=60
+)
+file_sensor >> process_orders >> load_warehouse
+```
+
+### 3. Dynamic DAGs
+
+```python
+# Airflow 2.x TaskFlow API
+@dag(schedule='@daily')
+def dynamic_pipeline():
+    tables = get_source_tables()  # returns ['orders', 'users', 'products']
+    
+    @task
+    def process_table(table_name):
+        spark.read.table(table_name).write.mode('overwrite')...
+    
+    process_table.expand(table_name=tables)
+    
+# Creates N parallel tasks at runtime
+```
+
+### 4. Backfill Pattern
+
+```python
+# Idempotent tasks = safe backfill
+@task
+def load_daily_partition(ds):
+    # ds = execution date (2024-01-15)
+    # OVERWRITE partition → idempotent
+    spark.sql(f"""
+        INSERT OVERWRITE TABLE silver.orders
+        PARTITION (date='{ds}')
+        SELECT * FROM bronze.orders WHERE date='{ds}'
+    """)
+
+# Backfill: airflow dags backfill -s 2024-01-01 -e 2024-01-14
+```
+
+## Testing DAGs
+
+```python
+# Unit test: validate DAG structure
+def test_dag_structure():
+    dag = load_dag('daily_pipeline')
+    assert dag.task_count == 5
+    assert 'extract' in dag.task_ids
+    assert dag.get_task('load').upstream_task_ids == {'transform'}
+
+# Integration test: run task with test data
+def test_transform_task():
+    result = transform_orders.execute(
+        context={'ds': '2024-01-01'},
+        test_data=sample_orders_df
+    )
+    assert result.count() > 0
+    assert 'amount' in result.columns
+```
+
+<Callout type="note">
+**Dagster vs Airflow для новых проектов.** Airflow — зрелый стандарт с большим community. Dagster — modern alternative с лучшим developer experience и asset-centric моделью. Для нового greenfield проекта: Dagster. Для existing Airflow infrastructure: оставаться на Airflow.
+</Callout>
+
+<Callout type="warning">
+**Anti-pattern: God DAG.** Один DAG на 200 tasks = unmanageable. Разбивайте: один DAG per domain (orders_pipeline, users_pipeline), межDAG dependencies через sensors или datasets.
+</Callout>
+
+<KnowledgeCheck>
+Orchestration essentials: Airflow = task-centric стандарт. Dagster = asset-centric modern alternative. DAG patterns: fan-out/fan-in, sensors, dynamic DAGs. Backfill: idempotent partition overwrite. Testing: validate structure + test tasks isolated. Anti-patterns: God DAG, non-idempotent tasks. В следующем модуле: Governance, Cataloging и Lineage.
+</KnowledgeCheck>

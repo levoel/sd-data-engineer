@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "12-feature-store/_exam",
+  "moduleId": "12-feature-store",
+  "examTitle": "Экзамен: Feature Store & ML Pipeline",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m12-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m12-exam-q1",
+      "type": "multiple-choice",
+      "question": "ML team обнаружила: churn prediction модель использовала future data при training (feature: 'total_orders_next_30d'). Accuracy = 99% в training, бесполезна в production. Какой тип skew и как предотвратить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Feature skew — разные реализации"
+        },
+        {
+          "id": "b",
+          "text": "Data skew — неправильное распределение"
+        },
+        {
+          "id": "c",
+          "text": "Time-travel skew (data leakage): модель 'видела будущее' при training. Fix: point-in-time joins. Для каждого training example at time T — использовать features AS OF time T (не latest). Feature store: get_historical_features() автоматически делает point-in-time correct joins"
+        },
+        {
+          "id": "d",
+          "text": "Label skew — неправильные labels"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Training-Serving Skew",
+      "explanation": "Time-travel skew = data leakage. Feature 'total_orders_next_30d' использует будущие данные → 99% accuracy is meaningless. Point-in-time joins: for training example at 2024-01-15, use features computed from data BEFORE 2024-01-15 only. Feast get_historical_features() handles this automatically.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m12-exam-q2",
+      "type": "multiple-choice",
+      "question": "4 ML команды независимо вычисляют feature 'customer_lifetime_value'. Каждая реализация немного отличается. Как решить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Стандартизировать через documentation"
+        },
+        {
+          "id": "b",
+          "text": "Запретить использование этого feature"
+        },
+        {
+          "id": "c",
+          "text": "Дать каждой команде свою версию"
+        },
+        {
+          "id": "d",
+          "text": "Feature reuse через Feature Store: одно определение customer_ltv в feature repository (Git). Compute pipeline: одна Spark job → offline + online store. 4 команды потребляют один feature через Feast API. Изменения — через PR review"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите раздел Feature Reuse",
+      "explanation": "Feature reuse = core value proposition Feature Store. One definition → one compute → consistent values across all consumers. Git-based feature repository: changes через PR → review → merge → auto-deploy. 4 × custom implementations → 1 × shared feature. Documentation (a) alone doesn't enforce consistency.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m12-exam-q3",
+      "type": "multiple-choice",
+      "question": "ML модель в production использует feature avg_order_value_30d. Feature Store offline store обновляется ежедневно (batch). Online store обновляется streaming. Monitoring показывает: offline = $85, online = $120. Что происходит?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нормальная ситуация — разные данные"
+        },
+        {
+          "id": "b",
+          "text": "Training-serving skew: offline (training) и online (serving) compute разные значения. Причины: 1) разная логика вычисления (batch SQL vs streaming aggregation), 2) разное окно (batch = calendar 30d, streaming = sliding 30d), 3) different data completeness. Fix: единый feature definition, мониторинг drift между stores"
+        },
+        {
+          "id": "c",
+          "text": "Проблема в ML модели — нужно переобучить"
+        },
+        {
+          "id": "d",
+          "text": "Online store broken — перезапустить"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Training-Serving Skew — Detection и Monitoring",
+      "explanation": "Training-serving skew: модель обучена на offline features (batch), serving использует online features (streaming). Если compute logic отличается → prediction quality degrades silently. $85 vs $120 = 41% drift → significant. Monitoring: compare distributions offline vs online periodically. Alert при drift > threshold. Root cause: usually different implementation или different time semantics.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m12-exam-q4",
+      "type": "multiple-choice",
+      "question": "Fraud detection модель требует feature 'transaction_count_last_5_min' с latency < 100ms. Feature Store online store на Redis. Как обеспечить low latency?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Вычислять feature on-demand при каждом запросе к Feature Store"
+        },
+        {
+          "id": "b",
+          "text": "Batch precompute каждые 5 минут"
+        },
+        {
+          "id": "c",
+          "text": "Streaming feature pipeline: Kafka (transactions) → Flink (sliding window 5 min, count per user) → write to Redis (online store). Feature lookup: Redis GET по user_id → pre-computed count. Latency: < 5ms (Redis). Flink обновляет на каждый event → near real-time freshness"
+        },
+        {
+          "id": "d",
+          "text": "Хранить все транзакции в Redis и считать COUNT при запросе"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Online Feature Serving и Streaming Features",
+      "explanation": "Streaming feature: pre-computed и materialized в Redis. Flink sliding window: каждый новый event → update count → write to Redis. Feature lookup: simple key-value GET (< 5ms). On-demand (a): latency depends on query complexity, unpredictable. Batch 5-min (b): stale для fraud (5 min delay). Full history in Redis (d): memory expensive, slow COUNT.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

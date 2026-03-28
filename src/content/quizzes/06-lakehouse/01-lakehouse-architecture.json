@@ -1,0 +1,57 @@
+{
+  "lessonSlug": "06-lakehouse/01-lakehouse-architecture",
+  "moduleId": "06-lakehouse",
+  "_meta": {
+    "idPrefix": "sdde-m06-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m06-01-q1",
+      "type": "multiple-choice",
+      "question": "Streaming pipeline пишет в Iceberg table 1 файл/минуту. Через неделю query performance деградировал. Причина и решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Слишком много данных — удалить старые"
+        },
+        {
+          "id": "b",
+          "text": "Нужно перейти на CSV формат"
+        },
+        {
+          "id": "c",
+          "text": "Iceberg не поддерживает streaming"
+        },
+        {
+          "id": "d",
+          "text": "Small file problem: 10080 файлов за неделю (1/min × 60 × 24 × 7). Каждый query открывает все файлы → overhead. Решение: OPTIMIZE (compaction) — объединить маленькие файлы в 128 MB chunks"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Small file problem: 1 file/min = 1440/day = 10080/week. Query engine открывает каждый файл → file open overhead доминирует. OPTIMIZE (compaction): 10080 × 1 MB → ~80 × 128 MB файлов. Background job, не блокирует reads.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m06-01-q2",
+      "type": "multiple-choice",
+      "question": "Команда выбирает table format для multi-engine lakehouse (Spark + Trino + Flink). Нужна partition evolution без rewrite. Какой формат?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Delta Lake — но сильная привязка к Databricks"
+        },
+        {
+          "id": "b",
+          "text": "Apache Iceberg: vendor-neutral, поддержка Spark/Trino/Flink, hidden partitioning (partition evolution без rewrite данных). Partition spec хранится в metadata, не в file paths"
+        },
+        {
+          "id": "c",
+          "text": "Apache Hudi — оптимизирован для upserts, но partition evolution ограничена"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Iceberg: hidden partitioning позволяет менять partition scheme (например, daily → hourly) без перезаписи данных. Metadata отслеживает partition spec per snapshot. Multi-engine: Iceberg — vendor-neutral стандарт, поддерживается Spark, Trino, Flink, Snowflake, BigQuery.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

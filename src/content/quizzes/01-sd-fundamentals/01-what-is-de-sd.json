@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/01-what-is-de-sd",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdde-m01-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-01-q1",
+      "type": "multiple-choice",
+      "question": "В чём ключевое отличие Data Engineering SD от Backend SD?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Backend SD фокусируется на request-response, DE SD — на data flow: как данные перемещаются от sources к consumers через pipelines"
+        },
+        {
+          "id": "b",
+          "text": "DE SD использует другие языки программирования"
+        },
+        {
+          "id": "c",
+          "text": "DE SD проще, потому что данные не требуют realtime обработки"
+        },
+        {
+          "id": "d",
+          "text": "Отличий нет — это одно и то же с разными названиями"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Backend SD проектирует системы для обработки HTTP-запросов (latency в мс, throughput в RPS). DE SD проектирует системы для перемещения и трансформации данных (freshness в минутах-часах, volume в GB-TB). Разные метрики, разные паттерны, разные инструменты.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m01-01-q2",
+      "type": "multiple-choice",
+      "question": "У вас 10 GB данных в день, команда из 1 data engineer, бюджет минимален. Какой подход оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Kafka + Flink + S3 + Trino — enterprise-ready с первого дня"
+        },
+        {
+          "id": "b",
+          "text": "PostgreSQL + dbt + cron — простая, дешёвая и достаточная архитектура"
+        },
+        {
+          "id": "c",
+          "text": "Hadoop cluster с MapReduce — проверено годами"
+        },
+        {
+          "id": "d",
+          "text": "Custom Python scripts с pandas — никаких фреймворков"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При 10 GB/день PostgreSQL справляется с хранением и запросами, dbt обеспечивает версионные трансформации (SQL + Git), cron — простейший оркестратор. Kafka/Flink — overkill для такого объёма. Важно: overengineering — это тоже ошибка system design.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m01-01-q3",
+      "type": "true-false",
+      "question": "В 6-Layer Data System Framework, orchestration (Airflow, Dagster) относится к Tools Layer — cross-cutting concern, который пересекает все остальные слои.",
+      "correctAnswer": true,
+      "explanation": "Orchestration — это cross-cutting tool, который координирует работу на всех слоях: запускает ingestion из sources, управляет processing, следит за качеством storage, и мониторит доставку к consumers. Поэтому он находится в Tools Layer, а не в Processing Layer.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

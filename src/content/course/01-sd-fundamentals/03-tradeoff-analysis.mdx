@@ -1,0 +1,166 @@
+---
+title: "Trade-off Analysis и технологические решения"
+description: "Как анализировать trade-offs при выборе технологий и архитектурных паттернов для data систем"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["Trade-offs", "Technology Selection", "Batch vs Stream", "Architecture"]
+---
+
+
+# Trade-off Analysis для Data Systems
+
+## Нет «лучших» инструментов — есть подходящие
+
+Главная ошибка junior data engineers — выбирать инструменты по популярности. «Kafka, потому что все используют Kafka.» «Spark, потому что это стандарт.» Правильный подход — **анализ trade-offs** для конкретных requirements.
+
+## Trade-off 1: Batch vs Stream Processing
+
+<DiagramContainer title="Batch vs Stream: Trade-offs" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="Данные обрабатываются порциями через интервалы (hourly, daily). Дёшево, просто, но медленно.">
+      <DataBox label="Batch Processing" className="border-blue-500/30">
+        <div className="space-y-1 text-xs">
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Дешевле (spot instances)</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Проще отладка</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Легко backfill</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Mature tooling</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Latency: часы</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Stale data между запусками</div>
+        </div>
+        <div className="text-xs text-slate-400 mt-2">Tools: Spark, dbt, AWS Glue</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Данные обрабатываются по мере поступления. Быстро, но сложнее и дороже.">
+      <DataBox label="Stream Processing" className="border-emerald-500/30">
+        <div className="space-y-1 text-xs">
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Latency: секунды</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Свежие данные всегда</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Event-driven</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Дороже (always-on cluster)</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Сложнее exactly-once</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Backfill проблематичен</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Отладка state сложна</div>
+        </div>
+        <div className="text-xs text-slate-400 mt-2">Tools: Kafka+Flink, Spark Streaming</div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### Когда что выбирать
+
+| Сценарий | Выбор | Почему |
+|----------|-------|--------|
+| Daily revenue report | Batch | Freshness часы — достаточно. Batch дешевле |
+| Fraud detection | Stream | Freshness секунды — критична. Fraud window < 1 мин |
+| ML feature computation | Batch + Stream | Batch для training features, stream для serving |
+| BI dashboards | Micro-batch | 5-15 мин freshness — компромисс цена/скорость |
+
+## Trade-off 2: Warehouse vs Lakehouse
+
+| Аспект | Data Warehouse | Data Lakehouse |
+|--------|---------------|----------------|
+| **Стоимость storage** | Высокая (proprietary format) | Низкая (Parquet on S3) |
+| **Query performance** | Отличная (оптимизирован) | Хорошая (зависит от engine) |
+| **Data types** | Структурированные | Все (struct, semi-struct, unstructured) |
+| **ML workloads** | Плохо (нужен export) | Хорошо (прямой доступ) |
+| **Vendor lock-in** | Высокий (Snowflake, Redshift) | Низкий (open formats) |
+| **ACID transactions** | Встроены | Через table format (Delta/Iceberg) |
+
+<Callout type="tip">
+**Тренд: Lakehouse побеждает**
+
+Большинство новых проектов выбирают lakehouse architecture. Snowflake и Databricks конвергируют: Snowflake добавил Iceberg support, Databricks продвигает Delta Lake. Если у вас greenfield проект — lakehouse по умолчанию, warehouse только для specific use cases (high-concurrency BI).
+</Callout>
+
+## Trade-off 3: ETL vs ELT
+
+<DiagramContainer title="ETL vs ELT" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <div>
+      <h4 className="text-center text-sm font-semibold text-blue-400 mb-3">ETL (Extract → Transform → Load)</h4>
+      <FlowRow className="gap-1 justify-center">
+        <Tooltip content="Данные извлекаются из источника">
+          <FlowNode variant="input">Extract</FlowNode>
+        </Tooltip>
+        <Arrow direction="right" />
+        <Tooltip content="Трансформация ПЕРЕД загрузкой: очистка, validation, reshaping">
+          <FlowNode variant="process">Transform</FlowNode>
+        </Tooltip>
+        <Arrow direction="right" />
+        <Tooltip content="Чистые данные загружаются в целевую систему">
+          <FlowNode variant="output">Load</FlowNode>
+        </Tooltip>
+      </FlowRow>
+      <div className="text-xs text-slate-400 text-center mt-2">Transform до load — данные чистые сразу</div>
+    </div>
+    <div>
+      <h4 className="text-center text-sm font-semibold text-emerald-400 mb-3">ELT (Extract → Load → Transform)</h4>
+      <FlowRow className="gap-1 justify-center">
+        <Tooltip content="Данные извлекаются из источника">
+          <FlowNode variant="input">Extract</FlowNode>
+        </Tooltip>
+        <Arrow direction="right" />
+        <Tooltip content="Raw данные загружаются сразу (быстро)">
+          <FlowNode variant="process">Load</FlowNode>
+        </Tooltip>
+        <Arrow direction="right" />
+        <Tooltip content="Трансформация ВНУТРИ warehouse/lakehouse (SQL, dbt)">
+          <FlowNode variant="output">Transform</FlowNode>
+        </Tooltip>
+      </FlowRow>
+      <div className="text-xs text-slate-400 text-center mt-2">Transform после load — используем мощность DWH</div>
+    </div>
+  </div>
+</DiagramContainer>
+
+### Когда ETL, когда ELT
+
+| ETL (transform first) | ELT (load first) |
+|----------------------|------------------|
+| Data quality критична до загрузки | Raw data нужна для exploration |
+| Legacy DWH с ограниченным compute | Modern DWH/Lakehouse с мощным compute |
+| Compliance: PII нельзя загружать в raw виде | Дешёвый storage (S3) — храним всё |
+| On-premise infrastructure | Cloud infrastructure |
+
+## Trade-off 4: Orchestrator Selection
+
+| | Airflow | Dagster | Prefect |
+|--|---------|---------|---------|
+| **Модель** | DAG-centric | Asset-centric | Flow-centric |
+| **Paradigm** | Tasks & dependencies | Software-defined assets | Decorators on functions |
+| **Learning curve** | Средняя | Высокая | Низкая |
+| **Community** | Огромное | Растущее | Среднее |
+| **Testing** | Сложно | Встроено | Хорошо |
+| **UI** | Функциональное | Отличное | Хорошее |
+| **Когда** | Legacy, большая команда | Greenfield, data mesh | Небольшие команды, быстрый старт |
+
+## Framework для принятия решений
+
+Для каждого technology choice:
+
+1. **Определите criteria** — что важно для ВАШЕГО проекта (не в целом)
+2. **Оцените 2-3 варианта** по каждому критерию
+3. **Документируйте решение** — ADR (Architecture Decision Record)
+4. **Назначьте trigger для пересмотра** — «пересмотреть, когда volume > 100 TB/день»
+
+```markdown
+## ADR-001: Orchestrator Selection
+
+Status: Accepted
+Context: Greenfield project, 3 DE, 20 pipelines, growing to 100+
+Decision: Dagster (asset-centric model)
+Alternatives considered: Airflow (established but DAG-centric), Prefect (simpler but less structure)
+Consequences:
+  [OK] Asset lineage out-of-the-box
+  [OK] Built-in testing framework
+  [OK] Clean separation of IO and compute
+  [NO] Smaller community than Airflow
+  [NO] Team needs to learn asset-centric paradigm
+Revisit trigger: If team grows to 10+ and Airflow expertise dominates
+```
+
+<KnowledgeCheck>
+Trade-off analysis — ядро system design. Не запоминайте «правильные» ответы — учитесь анализировать ограничения и выбирать подходящее решение. В следующем уроке: основы распределённых систем и как они применяются к data engineering.
+</KnowledgeCheck>

@@ -1,0 +1,160 @@
+---
+title: "Batch Pipeline Design Patterns"
+description: "Паттерны проектирования batch pipelines: idempotency, backfill, incremental processing, partitioned writes"
+order: 2
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["Batch Pipeline", "Idempotency", "Backfill", "Incremental", "Partition Overwrite"]
+---
+
+# Batch Pipeline Design Patterns
+
+## Pattern 1: Idempotent Pipeline
+
+**Проблема:** Pipeline failed midway. Rerun processes some data twice.
+
+**Решение:** Idempotent writes — повторный запуск даёт тот же результат:
+
+```python
+# [NO] Non-idempotent (append)
+df.write.mode("append").parquet("output/")
+# Rerun → duplicates!
+
+# [OK] Idempotent (overwrite partition)
+df.write.mode("overwrite") \
+  .partitionBy("date") \
+  .parquet("output/")
+# Rerun → same result (partition overwritten)
+```
+
+### Partition Overwrite Strategy
+
+```
+Target: output/date=2026-03-23/
+  
+First run:  write 1000 records → output/date=2026-03-23/part-00000.parquet
+Failed run: write 500 records → partial data
+Rerun:      overwrite entire partition → 1000 records again [OK]
+
+Key: granularity of overwrite = partition (date, hour)
+  Too coarse (monthly): reprocessing 30 days for 1 day fix
+  Too fine (hourly): 24 partitions per day, many small files
+  Sweet spot: daily partitions for most batch jobs
+```
+
+## Pattern 2: Incremental Processing
+
+**Проблема:** Reprocessing all data every day is expensive for 100TB+ datasets.
+
+**Решение:** Process only new/changed data:
+
+```python
+# Incremental pattern
+last_processed = read_watermark("pipeline_state")  # e.g., 2026-03-22
+
+new_data = spark.read.parquet("bronze/") \
+  .filter(col("ingestion_date") > last_processed)
+
+processed = transform(new_data)
+processed.write.mode("append").parquet("silver/")
+
+update_watermark("pipeline_state", current_date())
+```
+
+<DiagramContainer title="Full Refresh vs Incremental" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="Full Refresh: обработать ВСЕ данные каждый раз. Простой, но дорогой.">
+      <DataBox label="Full Refresh" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Process: ALL 100 TB every day</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Simple, always correct</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Expensive (compute + I/O)</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Slow (hours for large data)</div>
+          <div className="text-slate-400 mt-1">Use: small datasets, SCD Type 1</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Incremental: обработать только новые данные. Дешевле, но сложнее.">
+      <DataBox label="Incremental" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Process: only NEW data (1 TB/day)</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Fast (fraction of full)</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Cheap (less compute)</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Complex (watermarks, late data)</div>
+          <div className="text-slate-400 mt-1">Use: large datasets, append-heavy</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Pattern 3: Backfill
+
+**Проблема:** Logic changed → need to reprocess historical data.
+
+```
+Backfill scenarios:
+  1. Bug fix: cleaning logic was wrong for 30 days
+  2. New column: add "customer_segment" to Silver
+  3. Schema change: split "name" into "first_name" + "last_name"
+  4. New source: integrate new data source retroactively
+
+Backfill approach:
+  for date in date_range("2026-02-01", "2026-03-01"):
+    run_pipeline(date)  # idempotent partition overwrite
+    
+  # Each date overwrites its partition → clean state after backfill
+```
+
+### Backfill Design Considerations
+
+| Concern | Approach |
+|---------|---------|
+| **Resource contention** | Run backfill on separate cluster / off-peak hours |
+| **Data ordering** | Process dates sequentially (dependencies) |
+| **Progress tracking** | Log completed dates, resume from last |
+| **Validation** | Compare row counts before/after backfill |
+| **Notification** | Alert downstream consumers about reprocessing |
+
+## Pattern 4: SCD Type 2 (Slowly Changing Dimensions)
+
+```
+SCD Type 2: track history of dimension changes
+
+dim_customers:
+| customer_id | name    | city      | valid_from | valid_to   | is_current |
+|-------------|---------|-----------|------------|------------|------------|
+| 1           | Alice   | Moscow    | 2024-01-01 | 2025-06-15 | false      |
+| 1           | Alice   | SPb       | 2025-06-15 | 9999-12-31 | true       |
+| 2           | Bob     | Kazan     | 2024-03-01 | 9999-12-31 | true       |
+
+When city changes:
+  1. Close current record (valid_to = today, is_current = false)
+  2. Insert new record (valid_from = today, is_current = true)
+
+Query current: WHERE is_current = true
+Query historical: WHERE valid_from <= @date AND valid_to > @date
+```
+
+## Pattern 5: Data Quality Gates
+
+```python
+# Quality gate between Bronze → Silver
+bronze_df = spark.read.parquet("bronze/date=2026-03-23/")
+
+# Quality checks
+null_rate = bronze_df.filter(col("user_id").isNull()).count() / bronze_df.count()
+duplicate_rate = 1 - bronze_df.dropDuplicates(["event_id"]).count() / bronze_df.count()
+
+# Gate: fail if quality below threshold
+assert null_rate < 0.01, f"Null rate {null_rate} exceeds 1% threshold"
+assert duplicate_rate < 0.005, f"Duplicate rate {duplicate_rate} exceeds 0.5%"
+
+# Only proceed if quality passed
+silver_df = transform(bronze_df)
+silver_df.write.mode("overwrite").parquet("silver/date=2026-03-23/")
+```
+
+<KnowledgeCheck>
+Batch pipeline patterns: idempotent writes (partition overwrite), incremental processing (watermarks), backfill (date-range replay), SCD Type 2 (dimension history), quality gates (fail-fast on bad data). Эти паттерны применимы к любому batch framework (Spark, dbt, AWS Glue). В следующем модуле: Stream Processing.
+</KnowledgeCheck>

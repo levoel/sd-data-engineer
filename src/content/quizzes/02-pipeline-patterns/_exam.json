@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "02-pipeline-patterns/_exam",
+  "moduleId": "02-pipeline-patterns",
+  "examTitle": "Экзамен: Pipeline Architecture Patterns",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m02-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m02-exam-q1",
+      "type": "multiple-choice",
+      "question": "Startup с 5 TB/день, команда 4 DE. Нужны: daily BI reports + near real-time fraud detection. Какая архитектура?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Lambda: отдельные batch и streaming pipelines"
+        },
+        {
+          "id": "b",
+          "text": "Simple ETL: daily batch для всего"
+        },
+        {
+          "id": "c",
+          "text": "Kappa: всё streaming"
+        },
+        {
+          "id": "d",
+          "text": "Medallion + Hybrid: Kafka → Bronze (raw) → Flink (fraud, real-time) + Spark micro-batch (hourly Silver) → dbt (daily Gold/BI). Один data path, два processing режима"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 2: Lambda, Kappa, Medallion — когда какой паттерн",
+      "explanation": "Medallion + Hybrid: single data path через Kafka → Bronze. Fraud detection = Flink streaming consumer (real-time). BI = Spark micro-batch → Silver → dbt → Gold. Lambda (a) = two separate codebases, too complex for 4 DE. Kappa (c) = yearly aggregations expensive in streaming. Daily batch (d) = fraud detection impossible.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m02-exam-q2",
+      "type": "multiple-choice",
+      "question": "ML team хочет customer segments из DWH синхронизировать в Salesforce. Аналитики обновляют segments ежедневно в dbt Gold layer. Какой паттерн?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Reverse ETL: Gold layer (customer_segments table) → Census/Hightouch → автоматическая синхронизация в Salesforce ежедневно после обновления dbt"
+        },
+        {
+          "id": "b",
+          "text": "Создать отдельный pipeline Salesforce → DWH"
+        },
+        {
+          "id": "c",
+          "text": "Export CSV и загрузить вручную"
+        },
+        {
+          "id": "d",
+          "text": "Salesforce API интеграция напрямую из Spark"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 3: Reverse ETL — Data Activation use cases",
+      "explanation": "Reverse ETL: DWH (Gold) → operational system (Salesforce). Census/Hightouch подключаются к DWH, читают customer_segments, синхронизируют в Salesforce. Trigger: после dbt run (Gold updated). Автоматизировано, версионировано, отслеживаемо. Manual CSV (c) — error-prone, unscalable.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m02-exam-q3",
+      "type": "multiple-choice",
+      "question": "В Medallion architecture, Silver layer содержит cleaned данные. Вы обнаружили bug в cleaning логике, влияющий на последние 30 дней. Как исправить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Исправить bug и ждать когда новые данные перезапишут старые"
+        },
+        {
+          "id": "b",
+          "text": "Fix cleaning logic → backfill Silver from Bronze for 30 days. Bronze имеет raw data — replay corrected pipeline. Затем rebuild Gold from corrected Silver"
+        },
+        {
+          "id": "c",
+          "text": "Удалить все данные и начать заново"
+        },
+        {
+          "id": "d",
+          "text": "Исправить вручную в Silver таблице"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 2: Medallion Architecture — Bronze Layer Rules (source of truth for replay)",
+      "explanation": "Medallion advantage: Bronze = immutable raw data. Fix cleaning logic → reprocess Bronze → overwrite affected Silver partitions (30 days) → rebuild dependent Gold tables. No data loss because Bronze preserves original raw. This is WHY Bronze is append-only and never modified — it enables replay.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m02-exam-q4",
+      "type": "multiple-choice",
+      "question": "Компания мигрирует legacy ETL (Informatica on-premise) в cloud. Data sources: 20 API + 5 databases. Target: Snowflake. Команда знает SQL хорошо, Python средне. Какой подход?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Сохранить Informatica, перенести на VM в cloud"
+        },
+        {
+          "id": "b",
+          "text": "Переписать всё на Spark (PySpark)"
+        },
+        {
+          "id": "c",
+          "text": "ELT: Fivetran/Airbyte (Extract + Load raw в Snowflake) → dbt (Transform внутри Snowflake на SQL). Команда с SQL skills продуктивнее в dbt. Snowflake compute масштабируется на transform. Version control + CI/CD через dbt + Git"
+        },
+        {
+          "id": "d",
+          "text": "Custom Python скрипты для каждого source"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: ETL vs ELT — когда ELT выгоднее",
+      "explanation": "ELT в cloud warehouse: Extract+Load (managed connectors — Fivetran/Airbyte) → Transform (dbt SQL inside Snowflake). Преимущества: SQL-first (team proficiency), managed ingestion (20 API connectors out-of-box), warehouse-native compute (Snowflake scales). Informatica VM (a) — lift-and-shift, не использует cloud advantages. Custom Python (d) — maintenance burden для 25 sources.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

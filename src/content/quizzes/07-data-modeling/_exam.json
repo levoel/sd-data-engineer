@@ -1,0 +1,115 @@
+{
+  "lessonSlug": "07-data-modeling/_exam",
+  "moduleId": "07-data-modeling",
+  "examTitle": "Экзамен: Data Modeling & Schema Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m07-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m07-exam-q1",
+      "type": "multiple-choice",
+      "question": "Data scientist жалуется: 'Мне нужны все features в одной таблице для ML training, но Star Schema разбита на 8 таблиц'. Как решить без разрушения Star Schema?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Перестроить всё в OBT"
+        },
+        {
+          "id": "b",
+          "text": "Wide table (materialized view) для ML: JOIN fact + все dimensions → денормализованная таблица с 50+ колонками. Обновлять daily. Star Schema остаётся для BI, wide table — для ML. Feature store для serving"
+        },
+        {
+          "id": "c",
+          "text": "Дать data scientist прямой доступ к OLTP"
+        },
+        {
+          "id": "d",
+          "text": "Экспортировать в CSV каждый день"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Wide Tables и Decision Framework",
+      "explanation": "Wide table = materialized JOIN всех dimensions в одну таблицу. ML team получает feature-ready данные. Star Schema preserved для BI. Два serving формата из одних данных. Feature store (Feast) для online serving. Daily rebuild affordable при batch SLA.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m07-exam-q2",
+      "type": "multiple-choice",
+      "question": "Именование колонок в новом проекте: команда предлагает camelCase (customerId, orderDate). Ваша рекомендация?",
+      "options": [
+        {
+          "id": "a",
+          "text": "camelCase — привычно разработчикам"
+        },
+        {
+          "id": "b",
+          "text": "snake_case (customer_id, order_date): стандарт для SQL/analytics. Prefix conventions: is_ для boolean, _at для timestamps, _id для keys. Единообразие: dim_customer, fact_orders, stg_raw_orders"
+        },
+        {
+          "id": "c",
+          "text": "Любой стиль — неважно"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите раздел Naming Conventions",
+      "explanation": "snake_case — industry standard для SQL. Case-insensitive SQL engines (PostgreSQL, Snowflake) нормализуют к lowercase. camelCase → customerId становится customerid. Conventions: _id (FK/PK), _at (timestamp), is_ (boolean), fact_/dim_/stg_ (table prefix) — читаемость и самодокументируемость.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdde-m07-exam-q3",
+      "type": "multiple-choice",
+      "question": "Production таблица fact_orders (2B rows) используется 15 downstream pipelines. Нужно добавить обязательную колонку discount_amount (NOT NULL). Как безопасно выполнить schema evolution?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ALTER TABLE ADD COLUMN discount_amount NOT NULL — сразу"
+        },
+        {
+          "id": "b",
+          "text": "Создать новую таблицу и мигрировать все consumers за один раз"
+        },
+        {
+          "id": "c",
+          "text": "Backward-compatible migration: 1) ADD COLUMN discount_amount NULLABLE с DEFAULT 0, 2) backfill historical данные, 3) update producer (pipeline пишет real values), 4) migrate consumers поэтапно (15 pipelines), 5) ALTER NOT NULL constraint после полной миграции"
+        },
+        {
+          "id": "d",
+          "text": "Добавить колонку только в новую view, не трогать таблицу"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите раздел Schema Evolution — Backward Compatibility",
+      "explanation": "Backward-compatible migration: новая колонка NULLABLE + DEFAULT → existing consumers не ломаются (не знают о новой колонке). Backfill → historical данные корректны. Поэтапная миграция consumers → no big-bang deployment. NOT NULL constraint — последний шаг после проверки. Сразу NOT NULL (a) сломает INSERT от старых producers.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m07-exam-q4",
+      "type": "multiple-choice",
+      "question": "Startup строит data platform с нуля. 3 source системы, 10 бизнес-сущностей, требования меняются еженедельно. CTO хочет Data Vault. Ваша рекомендация?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Star Schema: 3 source системы и 10 сущностей — масштаб не оправдывает Data Vault complexity. Star Schema проще для маленькой команды, быстрее в разработке, понятнее аналитикам. Data Vault рассмотреть при росте до 10+ sources и стабилизации требований"
+        },
+        {
+          "id": "b",
+          "text": "Data Vault — CTO прав, лучше сразу правильно"
+        },
+        {
+          "id": "c",
+          "text": "OBT (One Big Table) — проще всего для startup"
+        },
+        {
+          "id": "d",
+          "text": "NoSQL document model — гибче для changing requirements"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите раздел Decision Framework — когда какой подход к моделированию",
+      "explanation": "Data Vault (Hubs, Links, Satellites) оправдан при 10+ sources, enterprise compliance, audit trail. Для 3 sources + startup velocity → Star Schema: быстрее build, проще query, понятнее аналитикам. OBT (c) — для простейших случаев, не масштабируется. Data Vault overhead: больше tables, сложнее joins, нужна зрелая команда.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

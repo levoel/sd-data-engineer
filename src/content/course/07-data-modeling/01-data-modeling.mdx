@@ -1,0 +1,212 @@
+---
+title: "Data Modeling & Schema Design"
+description: "Dimensional modeling, wide tables, OBT, schema evolution, naming conventions — trade-offs для analytics"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Data Modeling", "Wide Tables", "OBT", "Schema Evolution", "Normalization", "Denormalization"]
+---
+
+# Data Modeling & Schema Design
+
+## Моделирование данных для аналитики
+
+В OLTP мы нормализуем (3NF). В аналитике правила другие — приоритет скорость чтения и простота запросов, а не экономия storage.
+
+## Normalized vs Denormalized: Trade-offs
+
+<DiagramContainer title="Data Modeling: Normalized vs Wide Table vs OBT">
+<Grid columns={4}>
+  <Tooltip content="Ключевые характеристики для выбора модели данных в аналитике">
+    <DataBox label="Aspect" />
+  </Tooltip>
+  <Tooltip content="Normalized (3NF) — данные разбиты по таблицам без дублирования. Стандарт для OLTP. В аналитике используется редко из-за JOINs overhead">
+    <DataBox label="Normalized (3NF)" />
+  </Tooltip>
+  <Tooltip content="Wide Table — денормализованная таблица с 50+ колонками. Все данные в одном месте. Баланс между простотой и maintenance">
+    <DataBox label="Wide Table" />
+  </Tooltip>
+  <Tooltip content="OBT (One Big Table) — экстремальная денормализация. ВСЕ факты и dimensions в одной таблице. Максимальная скорость, но высокая redundancy">
+    <DataBox label="OBT" />
+  </Tooltip>
+
+  <Tooltip content="JOINs — главный bottleneck для аналитических запросов. Каждый JOIN = disk I/O + memory + CPU">
+    <FlowNode label="JOINs Required" />
+  </Tooltip>
+  <Tooltip content="3-7 JOINs на типичный аналитический запрос. При 10+ таблицах — query plan становится непредсказуемым. Аналитики frustrated">
+    <DataBox label="3-7+ JOINs" />   </Tooltip>
+  <Tooltip content="0-1 JOINs для 90% запросов. Основные dimensions уже в таблице. Иногда JOIN для редких dimensions">
+    <DataBox label="0-1 JOINs" />   </Tooltip>
+  <Tooltip content="0 JOINs — всё в одной таблице. SELECT + WHERE + GROUP BY = готовый отчёт. Drag-and-drop BI работает идеально">
+    <DataBox label="Zero JOINs" />   </Tooltip>
+
+  <Tooltip content="Data redundancy влияет на storage cost и consistency — нужно ли обновлять значение в нескольких местах">
+    <FlowNode label="Redundancy" />
+  </Tooltip>
+  <Tooltip content="Минимальная — каждый факт хранится один раз. Обновление customer name — одна строка в одной таблице">
+    <DataBox label="Minimal" />   </Tooltip>
+  <Tooltip content="Средняя — customer_name дублируется в каждом order. Но columnar storage (Parquet) эффективно сжимает повторы">
+    <DataBox label="Moderate" />   </Tooltip>
+  <Tooltip content="Максимальная — все dimensions дублируются в каждой строке. Storage cost выше, но columnar compression снижает impact на 60-80%">
+    <DataBox label="Maximum" />   </Tooltip>
+
+  <Tooltip content="Schema evolution — насколько больно добавить/изменить поле. Critical для fast-moving business requirements">
+    <FlowNode label="Schema Change" />
+  </Tooltip>
+  <Tooltip content="Простые изменения: ALTER TABLE одной таблице. Но добавление dimension = новая таблица + JOINs в каждом запросе">
+    <DataBox label="Easy per-table" />   </Tooltip>
+  <Tooltip content="Умеренно: добавить колонку просто, но backfill по миллиардам строк = часы compute. Iceberg/Delta упрощают через schema evolution">
+    <DataBox label="Backfill needed" />   </Tooltip>
+  <Tooltip content="Болезненно: любое schema change = полный rebuild таблицы. При TB-scale = часы-дни пересчёта. Не подходит для быстро меняющихся schemas">
+    <DataBox label="Full rebuild" />   </Tooltip>
+
+  <Tooltip content="Рекомендация по выбору: Star Schema как основа, OBT как оптимизация для конкретных dashboards">
+    <FlowNode label="Best For" />
+  </Tooltip>
+  <Tooltip content="OLTP системы, data vault (hub/sat/link), проекты с частыми schema changes и строгими consistency requirements">
+    <DataBox label="OLTP, Data Vault" />
+  </Tooltip>
+  <Tooltip content="Основная модель для analytics: data scientists (feature-ready), аналитики (простой SQL), ML pipelines">
+    <DataBox label="Analytics default" />
+  </Tooltip>
+  <Tooltip content="BI dashboards с pre-defined metrics, drag-and-drop tools (Tableau, Looker), read-heavy workloads (95%+ reads)">
+    <DataBox label="BI dashboards" />
+  </Tooltip>
+</Grid>
+</DiagramContainer>
+
+```
+Normalized (3NF):
+  orders: order_id, customer_id, product_id, amount
+  customers: customer_id, name, city_id
+  cities: city_id, city_name, country_id
+  
+  [OK] No data redundancy
+  [OK] Easy updates (one place)
+  [NO] 3+ JOINs для простого отчёта
+  [NO] Медленно для аналитики (OLAP)
+
+Denormalized (Star/Wide):
+  orders_wide: order_id, customer_name, city, country, 
+               product_name, category, amount, order_date
+  
+  [OK] 0 JOINs — SELECT + WHERE + GROUP BY
+  [OK] Columnar storage (Parquet) оптимизирован под это
+  [NO] Data redundancy (customer_name repeated)
+  [NO] Updates сложнее (SCD needed)
+```
+
+## Wide Tables
+
+Wide table — денормализованная таблица с десятками/сотнями колонок. Все данные в одном месте:
+
+```
+orders_wide (50+ columns):
+  -- Order facts
+  order_id, order_date, amount, quantity, discount
+  -- Customer (denormalized)
+  customer_id, customer_name, customer_segment, customer_city
+  -- Product (denormalized)  
+  product_id, product_name, category, subcategory, brand
+  -- Store
+  store_id, store_name, store_region
+  -- Derived
+  is_first_order, days_since_last_order, customer_ltv
+
+Преимущество: аналитик пишет простой SQL без JOINs
+Недостаток: 50+ columns × billions rows = storage cost
+```
+
+## OBT — One Big Table
+
+Экстремальная денормализация: **все факты и все dimensions в одной таблице**.
+
+```
+OBT: one_big_table
+  [OK] Zero JOINs
+  [OK] Максимальная производительность для BI
+  [OK] Простота для end users
+  [NO] Massive redundancy
+  [NO] Schema evolution болезненна
+  [NO] Rebuild при любом изменении
+
+When OBT makes sense:
+  - Read-heavy BI dashboards (95%+ reads)
+  - Limited dimensions (до 20 таблиц)
+  - Batch rebuild acceptable (daily/hourly)
+  - Team без SQL expertise (drag & drop BI)
+```
+
+<Callout type="tip">
+**Практическое правило:** Star Schema как база, OBT как кэш для конкретных dashboard-ов. Не делайте OBT единственной моделью — перестроение при schema change дорого.
+</Callout>
+
+## Schema Evolution Strategies
+
+| Стратегия | Описание | Downtime | Risk |
+|-----------|----------|----------|------|
+| **Add column** | Добавить с NULL default | Нет | Низкий |
+| **Rename column** | Alias или physical rename | Минимальный | Средний |
+| **Change type** | INT → BIGINT (widening) | Нет | Низкий |
+| **Change type** | STRING → INT (narrowing) | Нужен backfill | Высокий |
+| **Drop column** | Deprecate → remove | Нет | Средний |
+| **Split table** | Одна → две таблицы | Миграция | Высокий |
+
+```
+Safe schema evolution workflow:
+  1. Add new column (nullable, with default)
+  2. Dual-write: populate old + new columns
+  3. Migrate consumers to new column
+  4. Deprecate old column (mark in docs)
+  5. Drop old column after grace period
+
+Duration: days to weeks depending on consumers
+```
+
+## Naming Conventions
+
+```
+Tables:
+  Prefix: fact_, dim_, stg_, raw_
+  Format: snake_case, singular (dim_customer, not DimCustomers)
+  
+Columns:
+  IDs: {entity}_id (customer_id, order_id)
+  Dates: {event}_at (created_at, updated_at) или _date для date-only
+  Booleans: is_{condition} (is_active, is_deleted)
+  Amounts: {metric}_amount (order_amount, discount_amount)
+  Counts: {entity}_count (item_count)
+
+Derived/Computed:
+  Prefix: calc_ или _derived suffix
+  calc_customer_ltv, revenue_derived
+```
+
+## Выбор модели: Decision Framework
+
+```
+Вопрос 1: Сколько источников?
+  1-3 → Star Schema
+  10+ → Data Vault (Hub/Sat/Link)
+
+Вопрос 2: Кто потребитель?
+  BI analysts → Star/OBT (простой SQL)
+  Data Scientists → Wide tables (feature-ready)
+  ML Pipelines → Feature store format
+
+Вопрос 3: Как часто schema changes?
+  Редко → Star Schema + SCD Type 2
+  Часто → Iceberg (add/drop/rename без rewrite)
+
+Вопрос 4: Latency requirements?
+  Batch (hourly/daily) → Any model works
+  Near-real-time → Pre-aggregated materialized views
+```
+
+<Callout type="warning">
+**Anti-pattern: Over-normalization в аналитике.** В OLAP 7+ JOINs на каждый запрос = медленный BI и frustrated analysts. Денормализуйте до разумного уровня.
+</Callout>
+
+<KnowledgeCheck>
+Data Modeling essentials: Normalized = OLTP, Denormalized = OLAP. Star Schema = default для аналитики. Wide Tables = 50+ columns, zero JOINs. OBT = экстремальная денормализация для BI dashboards. Schema evolution: add → dual-write → migrate → deprecate → drop. Naming: snake_case, fact_/dim_ prefix, _id/_at/_is conventions. В следующем модуле: CDC Pipeline Design.
+</KnowledgeCheck>

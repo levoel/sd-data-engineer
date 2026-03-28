@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "03-batch-processing/01-spark-architecture",
+  "moduleId": "03-batch-processing",
+  "_meta": {
+    "idPrefix": "sdde-m03-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m03-01-q1",
+      "type": "multiple-choice",
+      "question": "Spark job обрабатывает 1 TB данных. spark.sql.shuffle.partitions = 200 (default). Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Job выполнится оптимально"
+        },
+        {
+          "id": "b",
+          "text": "200 partitions всегда достаточно"
+        },
+        {
+          "id": "c",
+          "text": "Каждая partition ≈ 5 GB (1 TB / 200) → OOM на executors с 8 GB RAM. Нужно увеличить до ~8000 partitions (1 TB / 128 MB)"
+        },
+        {
+          "id": "d",
+          "text": "Job не запустится"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Default 200 partitions для 1 TB = 5 GB per partition. Executor с 8 GB RAM не может обработать 5 GB partition в memory. Rule: partition_size ≈ 128 MB → 1 TB / 128 MB = ~8000 partitions. Set spark.sql.shuffle.partitions = 8000.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m03-01-q2",
+      "type": "multiple-choice",
+      "question": "groupBy('country') на данных, где 99% записей — 'US'. Какое решение для data skew?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить число executors"
+        },
+        {
+          "id": "b",
+          "text": "Data skew невозможно решить в Spark"
+        },
+        {
+          "id": "c",
+          "text": "Уменьшить число partitions"
+        },
+        {
+          "id": "d",
+          "text": "Salting: добавить random suffix к key (country_0, country_1, ..., country_9) → распределить US по 10 partitions → aggregate → final aggregate without salt"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Salting: 'US' → 'US_0', 'US_1', ... 'US_9'. groupBy('country_salted').sum() → 10 partitions по ~5M rows вместо 1 по 50M. Затем groupBy('country').sum() (без salt) — финальная агрегация маленьких результатов. 10x speedup для skewed key.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

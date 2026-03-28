@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/02-requirements-gathering",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdde-m01-02"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-02-q1",
+      "type": "multiple-choice",
+      "question": "Какой нефункциональный параметр (NFR) определяет, нужен ли streaming vs batch processing?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Volume — объём данных в день"
+        },
+        {
+          "id": "b",
+          "text": "Cost — бюджет на infrastructure"
+        },
+        {
+          "id": "c",
+          "text": "Freshness/Latency — как быстро данные должны быть доступны потребителям"
+        },
+        {
+          "id": "d",
+          "text": "Concurrency — число одновременных пользователей"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Freshness (Data SLA latency) — ключевой параметр: если данные нужны через секунды — streaming обязателен; через часы — batch достаточен. Volume влияет на размер кластера, но не на модель processing. Cost может ограничить streaming, но не определяет потребность.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-02-q2",
+      "type": "multiple-choice",
+      "question": "Data SLA говорит: 'daily_revenue_report обновляется к 06:00 UTC ±30 мин'. Pipeline завершился в 06:45. Что произошло?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ничего — 45 минут после 06:00 допустимо"
+        },
+        {
+          "id": "b",
+          "text": "Нужно увеличить SLA до ±60 мин"
+        },
+        {
+          "id": "c",
+          "text": "Pipeline работает нормально, SLA — просто рекомендация"
+        },
+        {
+          "id": "d",
+          "text": "SLA breach — pipeline должен был завершиться к 06:30 (06:00 + 30 мин tolerance), необходим incident report"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "SLA '06:00 ±30 мин' означает deadline 06:30. Pipeline завершился в 06:45 — это SLA breach на 15 минут. SLA — это контракт, не рекомендация. Breach требует: 1) алерт (PagerDuty), 2) incident report, 3) root cause analysis, 4) preventive action.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m01-02-q3",
+      "type": "true-false",
+      "question": "При проектировании data pipeline, backfill-потребность (перезагрузка исторических данных) не влияет на выбор архитектуры.",
+      "correctAnswer": false,
+      "explanation": "Backfill критически влияет на архитектуру: streaming pipeline (Kafka+Flink) плохо подходит для backfill — нужно replay всей истории. Batch pipeline (Spark) легко перезапускается на исторических данных. Если backfill нужен часто — архитектура должна это поддерживать (idempotent writes, time-partitioned storage).",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+---
+title: "System Design для Data Engineering: что и зачем"
+description: "Почему DE System Design отличается от backend SD и какие навыки нужны"
+order: 1
+difficulty: "beginner"
+estimatedTime: 15
+topics: ["System Design", "Data Engineering", "Architecture"]
+---
+
+
+# System Design для Data Engineering
+
+## Почему DE SD ≠ Backend SD
+
+Backend System Design фокусируется на **request-response**: как обработать HTTP-запрос от пользователя, масштабировать API, кэшировать ответы. Data Engineering System Design фокусируется на **data flow**: как данные попадают в систему, как трансформируются, где хранятся и как потребляются.
+
+<DiagramContainer title="Backend SD vs Data Engineering SD" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+    <div>
+      <h4 className="text-center text-sm font-semibold text-blue-400 mb-3">Backend System Design</h4>
+      <FlowColumn>
+        <Tooltip content="Пользователь отправляет запрос через браузер или приложение">
+          <FlowNode variant="input">User Request</FlowNode>
+        </Tooltip>
+        <Arrow direction="down" />
+        <Tooltip content="API обрабатывает запрос и возвращает ответ за миллисекунды">
+          <FlowNode variant="process">API / Service</FlowNode>
+        </Tooltip>
+        <Arrow direction="down" />
+        <Tooltip content="Результат — ответ пользователю (JSON, HTML)">
+          <FlowNode variant="output">Response (мс)</FlowNode>
+        </Tooltip>
+      </FlowColumn>
+      <div className="text-xs text-slate-400 text-center mt-2">Фокус: latency, throughput, availability</div>
+    </div>
+    <div>
+      <h4 className="text-center text-sm font-semibold text-emerald-400 mb-3">Data Engineering SD</h4>
+      <FlowColumn>
+        <Tooltip content="Данные приходят из множества источников: БД, API, файлы, потоки">
+          <FlowNode variant="input">Data Sources (множество)</FlowNode>
+        </Tooltip>
+        <Arrow direction="down" />
+        <Tooltip content="Данные проходят через pipeline: очистка, трансформация, обогащение">
+          <FlowNode variant="process">Pipeline (batch/stream)</FlowNode>
+        </Tooltip>
+        <Arrow direction="down" />
+        <Tooltip content="Данные попадают к потребителям: аналитики, ML, дашборды">
+          <FlowNode variant="output">Consumers (часы → мс)</FlowNode>
+        </Tooltip>
+      </FlowColumn>
+      <div className="text-xs text-slate-400 text-center mt-2">Фокус: reliability, freshness, quality, cost</div>
+    </div>
+  </div>
+</DiagramContainer>
+
+### Ключевые отличия
+
+| Аспект | Backend SD | Data Engineering SD |
+|--------|-----------|-------------------|
+| **Основная модель** | Request-Response | Data Flow (pipeline) |
+| **Латентность** | Миллисекунды | Минуты → часы (batch), секунды (stream) |
+| **Объём данных** | KB per request | GB → TB per batch |
+| **Тип нагрузки** | Много маленьких запросов | Мало больших batch jobs |
+| **Ключевая метрика** | P99 latency | Data freshness, SLA, quality |
+| **Failure mode** | 500 error → retry | Pipeline failed → stale data |
+| **Cost driver** | Compute (серверы) | Storage + Compute (часто storage доминирует) |
+
+## 6-Layer Framework для Data Systems
+
+Любая data-система состоит из 6 слоёв:
+
+<DiagramContainer title="6-Layer Data System Framework" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <Tooltip content="Откуда приходят данные: OLTP БД, API, файлы, IoT, события приложений">
+      <FlowNode variant="input"><Icon name="layers" className="text-blue-400" size="1.2em" /> Sources Layer</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Как данные обрабатываются: batch (Spark), stream (Kafka/Flink), micro-batch">
+      <FlowNode variant="process"><Icon name="gear" className="text-slate-400" size="1.2em" /> Processing Layer</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Где данные хранятся: Data Warehouse, Data Lake, Lakehouse">
+      <FlowNode variant="process"><Icon name="cube" className="text-purple-400" size="1.2em" /> Storage Layer</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="(Опционально) ML модели, feature store, training pipelines">
+      <FlowNode variant="process"><Icon name="gear" className="text-emerald-400" size="1.2em" /> ML/AI Layer (optional)</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Кто потребляет данные: аналитики (BI), ML engineers, внутренние сервисы">
+      <FlowNode variant="output"><Icon name="target" className="text-blue-400" size="1.2em" /> Consumers Layer</FlowNode>
+    </Tooltip>
+  </FlowColumn>
+  <div className="mt-3 px-4">
+    <Tooltip content="Инструменты, пересекающие все слои: мониторинг, governance, orchestration, CI/CD">
+      <DataBox label="Cross-cutting: Tools Layer" className="border-purple-500/30">
+        Orchestration · Monitoring · Governance · CI/CD · Data Quality
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+<Callout type="tip">
+**Как использовать этот framework**
+
+В каждом system design упражнении или на собеседовании проговаривайте все 6 слоёв. Не обязательно в порядке сверху-вниз — можно начать с consumers (что нужно бизнесу?) и идти вверх к sources. Но каждый слой должен быть затронут.
+</Callout>
+
+## Что делает Data Engineer «System Designer»
+
+Data Engineer принимает решения на каждом слое:
+
+| Слой | Решения |
+|------|---------|
+| Sources | Какие источники? Batch или CDC? Как валидировать на входе? |
+| Processing | Spark или Flink? Batch или stream? Как обрабатывать late data? |
+| Storage | Warehouse или Lakehouse? Какой table format? Как партиционировать? |
+| ML/AI | Нужен ли feature store? Online или offline? |
+| Consumers | SQL доступ? API? Pre-aggregated views? |
+| Tools | Airflow или Dagster? Как мониторить? Как обеспечить quality? |
+
+## Три главных вопроса DE System Design
+
+Перед каждым проектом задайте себе:
+
+### 1. Как данные приходят и как быстро нужна реакция?
+
+Это определяет processing model:
+- **Данные приходят раз в день** → Batch processing (Spark, AWS Glue)
+- **Данные приходят постоянно и нужны через минуты** → Micro-batch (Spark Structured Streaming)
+- **Данные нужны в секунды** → Real-time streaming (Kafka + Flink)
+
+### 2. Кто потребляет данные и для чего?
+
+Это определяет storage и data model:
+- **Аналитики пишут SQL-запросы** → Data Warehouse с star schema
+- **Data Scientists тренируют модели** → Lakehouse с raw данными + feature store
+- **Сервисы читают через API** → Low-latency serving layer (Redis, RocksDB)
+
+### 3. Сколько данных и какой бюджет?
+
+Это определяет tool choice и architecture:
+- **10 GB/день, бюджет минимален** → PostgreSQL + dbt + cron
+- **1 TB/день, средний бюджет** → Lakehouse + Spark + Airflow
+- **100 TB/день, enterprise** → Multi-engine (Spark + Flink + Trino) + Data Mesh
+
+<Callout type="note">
+**Правило: «The best data systems aren't the most complex — they're the ones that are simple enough to maintain, fast enough to deliver, and flexible enough to grow.»**
+
+Не overengineer. Если PostgreSQL + dbt достаточно — используйте их. Spark не нужен для 10 GB/день.
+</Callout>
+
+<KnowledgeCheck>
+Data Engineering System Design — это не выбор инструментов (Spark vs Flink, Airflow vs Dagster). Это **проектирование системы**, которая надёжно перемещает данные от источников к потребителям с нужной скоростью, качеством и стоимостью. В следующих уроках разберём каждый слой в деталях.
+</KnowledgeCheck>

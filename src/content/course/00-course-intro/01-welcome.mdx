@@ -1,0 +1,86 @@
+---
+title: "Добро пожаловать в System Design для Data Engineer"
+description: "Обзор курса, предварительные требования и структура обучения"
+order: 1
+difficulty: "beginner"
+estimatedTime: 10
+---
+
+# Добро пожаловать в System Design для Data Engineer
+
+Этот курс учит **проектировать data-платформы** — не «как использовать Airflow», а **когда и почему** выбирать конкретные архитектурные решения для обработки, хранения и доставки данных.
+
+## Что вас ждёт
+
+- **Pipeline Architecture**: ETL vs ELT vs Zero-ETL, Lambda vs Kappa, Medallion architecture
+- **Batch Processing**: Apache Spark internals, партиционирование, оптимизация joins
+- **Stream Processing**: Kafka, Flink, watermarks, exactly-once semantics
+- **Data Warehouse Design**: Star/Snowflake schema, SCD types, dimensional modeling
+- **Data Lakehouse**: Delta Lake, Apache Iceberg, Hudi — сравнение и trade-offs
+- **CDC Pipeline Design**: проектирование Change Data Capture систем
+- **Data Quality & Observability**: data contracts, SLA, anomaly detection
+- **Orchestration**: Airflow vs Dagster vs Prefect — design, не синтаксис
+- **Feature Store & ML Pipeline**: serving features для ML в production
+- **Real-time Analytics**: metrics platforms, real-time dashboards
+- **Capstone**: проектирование end-to-end data platform для e-commerce
+
+## Чем этот курс отличается
+
+| Обычный DE-курс | Этот курс |
+|----------------|-----------|
+| Как написать DAG в Airflow | **Когда** Airflow, **когда** Dagster, **почему** |
+| Синтаксис PySpark | **Как проектировать** batch pipeline для 10TB/день |
+| Туториал по Kafka | **Архитектура** streaming системы с exactly-once |
+| Документация Delta Lake | **Trade-offs** Delta vs Iceberg vs Hudi |
+
+## Предварительные требования
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Уверенный SQL (JOIN, оконные функции, CTE)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Базовый Python (pandas, работа с файлами)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Понимание реляционных баз данных
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Docker Desktop для лабораторий
+
+<Callout type="tip">
+**Связь с другими курсами на платформе**
+
+Этот курс дополняет:
+- [Apache Spark Deep-Dive](/spark-course/01-architecture-internals/01-spark-overview) — для глубокого погружения в Spark internals
+- [Debezium CDC Mastery](/debezium/01-module-1/01-what-is-cdc) — для деталей реализации CDC
+- [Data Governance](/data-governance-course/) — для governance framework
+
+System Design курс учит **когда и почему**, специализированные курсы — **как именно**.
+</Callout>
+
+## Структура курса
+
+### Фундамент (M01-M02)
+1. **Основы System Design для DE** — 6-layer framework, requirements, trade-offs
+2. **Pipeline Architecture Patterns** — ETL/ELT, Lambda/Kappa, Medallion, Data Mesh
+
+### Processing (M03-M04)
+3. **Batch Processing** — Spark, MapReduce, partition strategies
+4. **Stream Processing** — Kafka, Flink, watermarks, late data
+
+### Storage (M05-M07)
+5. **Data Warehouse Design** — Star/Snowflake, SCD, dimensional modeling
+6. **Data Lakehouse** — Delta/Iceberg/Hudi, table formats, compaction
+7. **Data Modeling** — advanced patterns, schema evolution
+
+### Data Operations (M08-M11)
+8. **CDC Pipeline Design** — architecture, exactly-once, schema evolution
+9. **Data Quality & Observability** — contracts, SLA, anomaly detection
+10. **Orchestration** — Airflow/Dagster/Prefect design patterns
+11. **Governance & Lineage** — cataloging, access control, compliance
+
+### Advanced (M12-M15)
+12. **Feature Store** — ML feature serving, online/offline stores
+13. **Real-time Analytics** — metrics platforms, OLAP engines
+14. **Cost Optimization** — compute/storage costs, right-sizing
+15. **Capstone** — end-to-end data platform
+
+## Формат обучения
+
+- <Icon name="book" className="text-blue-400" size="1.2em" /> **Уроки** с архитектурными диаграммами и trade-off analysis
+- <Icon name="cube" className="text-purple-400" size="1.2em" /> **Квизы** — выбор правильного паттерна для сценария
+- <Icon name="book" className="text-slate-400" size="1.2em" /> **Экзамены** по модулю (70% pass threshold)
+- <Icon name="target" className="text-yellow-400" size="1.2em" /> **PDF-сертификат** после прохождения всех экзаменов

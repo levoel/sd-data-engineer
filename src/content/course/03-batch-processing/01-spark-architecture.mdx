@@ -1,0 +1,203 @@
+---
+title: "Spark Architecture для System Design"
+description: "Архитектура Apache Spark с позиции System Design: driver-executor model, DAG scheduling, shuffle"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 22
+topics: ["Spark", "Architecture", "DAG", "Shuffle", "Executor", "Partitioning"]
+---
+
+# Spark Architecture для System Design
+
+## Почему Spark — default для batch
+
+Apache Spark — de-facto стандарт для batch processing больших данных. Понимание его архитектуры критично для system design:
+
+<DiagramContainer title="Spark Architecture: Driver + Executors" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Driver: координатор. Планирует DAG, распределяет tasks, собирает результаты">
+        <DataBox label="Driver" className="border-blue-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>SparkSession, SparkContext</div>
+            <div>DAG Scheduler → Stage → Tasks</div>
+            <div>Task distribution → Executors</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Executor: worker process. Выполняет tasks, хранит данные в RAM/disk">
+        <DataBox label="Executor 1" className="border-emerald-500/30 w-36">
+          <div className="text-xs">4 cores, 8 GB RAM</div>
+          <div className="text-[10px] text-slate-400">Tasks: T1, T2, T3, T4</div>
+        </DataBox>
+      </Tooltip>
+      <DataBox label="Executor 2" className="border-emerald-500/30 w-36">
+        <div className="text-xs">4 cores, 8 GB RAM</div>
+        <div className="text-[10px] text-slate-400">Tasks: T5, T6, T7, T8</div>
+      </DataBox>
+      <DataBox label="Executor N" className="border-emerald-500/30 w-36">
+        <div className="text-xs">4 cores, 8 GB RAM</div>
+        <div className="text-[10px] text-slate-400">Tasks: ...</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## DAG и Stages
+
+Spark превращает ваш код в **DAG (Directed Acyclic Graph)** операций:
+
+```
+Код:
+  df = spark.read.parquet("orders")     # Stage 0: read
+  df = df.filter(col("amount") > 100)   # Stage 0: filter (narrow)
+  df = df.groupBy("region").sum("amount") # Stage 1: shuffle + aggregate
+  df = df.orderBy("sum(amount)")         # Stage 2: shuffle + sort
+  df.write.parquet("output")             # Stage 2: write
+
+DAG Stages:
+  Stage 0: [read + filter] — narrow transforms, no shuffle
+     ↓ shuffle (groupBy requires data redistribution)
+  Stage 1: [aggregate]
+     ↓ shuffle (orderBy requires global sort)
+  Stage 2: [sort + write]
+```
+
+### Design Insight: Shuffle = Performance Killer
+
+**Shuffle** — перераспределение данных между executors. Самая дорогая операция:
+
+```
+Shuffle cost:
+  1. Serialize data on source executor
+  2. Write to local disk (shuffle files)
+  3. Network transfer to target executors
+  4. Read from disk on target executor
+  5. Deserialize
+
+Network I/O + Disk I/O = bottleneck
+```
+
+## Partitioning: ключ к performance
+
+### Input Partitioning
+
+```
+Файлы на S3/HDFS → Spark partitions:
+  1 file (1 GB Parquet) → 1 partition → 1 task
+  
+  Правило: partition size ≈ 128 MB
+  1 GB file → ~8 partitions → 8 parallel tasks
+  100 GB dataset → ~800 partitions → 800 tasks
+```
+
+### Shuffle Partitioning
+
+```
+spark.sql.shuffle.partitions = 200 (default)
+
+Проблема: 
+  10 GB data → 200 partitions = 50 MB/partition [OK]
+  1 TB data → 200 partitions = 5 GB/partition [NO] (OOM!)
+  1 MB data → 200 partitions = 5 KB/partition [NO] (overhead!)
+
+Rule: partition_count ≈ total_data_size / 128 MB
+  10 GB → 80 partitions
+  1 TB → 8,000 partitions
+```
+
+### Data Skew
+
+```
+Data Skew Problem:
+  groupBy("country") → 
+    partition "US": 50M records (99%)
+    partition "LU": 10K records (1%)
+  
+  Task for "US": 30 minutes
+  Task for "LU": 1 second
+  Total: 30 minutes (limited by slowest task = straggler)
+
+Solutions:
+  1. Salting: add random suffix to key → distribute "US" across N partitions
+  2. Broadcast Join: if one side is small (< 10 MB), broadcast to all executors
+  3. AQE Skew Join: Spark 3+ automatically splits skewed partitions
+```
+
+<DiagramContainer title="Data Skew: Straggler Task" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="Без fix: один task обрабатывает 99% данных, остальные ждут">
+      <DataBox label="Skewed" className="border-red-500/30">
+        <div className="text-xs space-y-1">
+          <div>Task US: 50M rows → 30 min</div>
+          <div>Task DE: 200K rows → 5 sec</div>
+          <div>Task FR: 150K rows → 4 sec</div>
+          <div className="text-red-400">Total: 30 min (straggler)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="С salting: US разбит на 10 sub-partitions, параллельная обработка">
+      <DataBox label="Salted" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Task US_0: 5M rows → 3 min</div>
+          <div>Task US_1: 5M rows → 3 min</div>
+          <div>... (10 tasks)</div>
+          <div className="text-emerald-400">Total: 3 min (10x faster)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## System Design Decisions для Spark Jobs
+
+### 1. Cluster Sizing
+
+```
+Formula:
+  total_data = 100 GB
+  target_partition_size = 128 MB
+  partitions = ceil(100 GB / 128 MB) = 800
+  
+  cores_per_executor = 4 (sweet spot)
+  executor_memory = 8 GB (4 GB per core)
+  executors_needed = ceil(800 / 4) = 200 (at once)
+  
+  With 20 executors: 800 tasks / (20 × 4 cores) = 10 waves
+  Time ≈ 10 waves × task_duration
+```
+
+### 2. Storage Format
+
+| Format | Use Case | Compression | Columnar |
+|--------|---------|-------------|---------|
+| **Parquet** | Default for analytics | Snappy/Zstd | Yes |
+| **ORC** | Hive ecosystem | Zlib | Yes |
+| **Avro** | Streaming ingestion | Snappy | No (row) |
+| **JSON** | Never for production | None | No |
+| **CSV** | Legacy only | None | No |
+
+### 3. Join Strategies
+
+| Strategy | When | Performance |
+|----------|------|-------------|
+| **Broadcast Join** | One side fits in memory (< 10 MB default) | Fastest (no shuffle) |
+| **Sort-Merge Join** | Both sides large, sorted | Good (one shuffle) |
+| **Shuffle Hash Join** | Both sides large, unsorted | OK (hash + shuffle) |
+
+<Callout type="tip">
+**Cross-reference: Apache Spark Deep-Dive**
+
+Этот курс покрывает Spark с позиции System Design. Для глубокого погружения в Spark internals (Catalyst, Tungsten, AQE, UDFs, memory management) — курс Apache Spark Deep-Dive на этой платформе.
+</Callout>
+
+<KnowledgeCheck>
+Spark SD essentials: DAG → Stages → Tasks. Shuffle = bottleneck. Partitioning = performance key. Data skew = straggler tasks. Format: Parquet default. Joins: broadcast when possible. Cluster sizing: data_size / 128 MB = partition count. В следующем уроке: batch pipeline design patterns.
+</KnowledgeCheck>

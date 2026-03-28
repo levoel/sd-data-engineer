@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/03-tradeoff-analysis",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdde-m01-03"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-03-q1",
+      "type": "multiple-choice",
+      "question": "Вы выбираете между Data Warehouse (Snowflake) и Data Lakehouse (Iceberg on S3) для нового greenfield проекта. У вас смешанные workloads: BI-аналитика + ML training. Какой trade-off ключевой?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Lakehouse дешевле для storage + ML имеет прямой доступ к данным, но warehouse имеет лучшую query performance для BI. Для смешанных workloads lakehouse оптимальнее"
+        },
+        {
+          "id": "b",
+          "text": "Warehouse лучше для обоих workloads"
+        },
+        {
+          "id": "c",
+          "text": "Нужно использовать оба: warehouse для BI, lake для ML"
+        },
+        {
+          "id": "d",
+          "text": "Разницы нет — оба одинаково подходят"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Для mixed workloads (BI + ML) lakehouse оптимален: ML получает прямой доступ к данным без export, storage дешёвый (S3+Parquet), ACID через Iceberg/Delta. Query performance для BI ниже, чем у dedicated warehouse, но достаточная для большинства use cases. Подход 'c' (оба) создаёт data duplication и sync проблемы.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-03-q2",
+      "type": "multiple-choice",
+      "question": "Команда выбирает оркестратор: Airflow (DAG-centric) vs Dagster (asset-centric). У команды 3 DE, greenfield проект, 20 pipelines растущих до 100+. Какой подход лучше и почему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Airflow — потому что у него самое большое community"
+        },
+        {
+          "id": "b",
+          "text": "Dagster — asset-centric модель лучше для greenfield с растущим числом pipelines, встроенное тестирование, линейность из коробки. Но team needs to learn new paradigm"
+        },
+        {
+          "id": "c",
+          "text": "Prefect — самый простой для маленькой команды"
+        },
+        {
+          "id": "d",
+          "text": "cron — достаточно для 20 pipelines"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для greenfield проекта Dagster предлагает asset-centric модель (определяете ЧТО, не КАК), встроенное тестирование, и автоматическую lineage. При росте до 100+ pipelines asset-oriented подход масштабируется лучше, чем DAG-centric. Trade-off: Dagster имеет меньшее community и требует изучения нового paradigm. Airflow подошёл бы для команды с existing Airflow expertise.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-03-q3",
+      "type": "true-false",
+      "question": "ETL (Extract-Transform-Load) всегда лучше ELT (Extract-Load-Transform) для обеспечения качества данных.",
+      "correctAnswer": false,
+      "explanation": "ETL обеспечивает качество ДО загрузки, но ELT позволяет трансформировать данные используя мощный compute warehouse/lakehouse. ELT лучше, когда: 1) raw data нужна для exploration, 2) DWH имеет мощный compute (Snowflake, BigQuery), 3) storage дешёвый. ETL лучше, когда: PII нужно маскировать до загрузки, legacy DWH с ограниченным compute.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/04-distributed-systems",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdde-m01-04"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-04-q1",
+      "type": "multiple-choice",
+      "question": "Spark job с 200 partitions: 199 tasks завершились за 30 секунд, 1 task работает уже 20 минут. Что наиболее вероятно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Network partition между worker и driver"
+        },
+        {
+          "id": "b",
+          "text": "Spark driver перегружен"
+        },
+        {
+          "id": "c",
+          "text": "Data skew — одна партиция получила непропорционально много данных (hot key), создавая straggler task"
+        },
+        {
+          "id": "d",
+          "text": "Недостаточно executor memory"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Классический data skew: одна партиция содержит значительно больше данных, чем остальные (hot key). Task для этой партиции работает намного дольше — straggler task. Решения: salting (добавить random suffix к ключу), broadcast join (если один DataFrame маленький), AQE skew join optimization в Spark 3+.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-04-q2",
+      "type": "multiple-choice",
+      "question": "Kafka topic с replication-factor=3 и min.insync.replicas=2. Один из трёх broker-ов упал. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Topic становится полностью недоступен для записи"
+        },
+        {
+          "id": "b",
+          "text": "Kafka автоматически снижает replication-factor до 2"
+        },
+        {
+          "id": "c",
+          "text": "Данные на упавшем broker потеряны навсегда"
+        },
+        {
+          "id": "d",
+          "text": "Запись продолжается нормально: 2 ISR из 3 — достаточно для min.insync.replicas=2. При падении ещё одного broker — запись заблокируется"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "С RF=3 и min.insync.replicas=2: пока 2+ реплики в ISR — запись работает. 1 broker упал → ISR=2, min.insync=2 → ОК. Если ещё один упадёт → ISR=1 < min.insync=2 → запись блокируется (NotEnoughReplicasException). Данные не потеряны — когда broker вернётся, он догонит leader.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-04-q3",
+      "type": "true-false",
+      "question": "Amazon S3 обеспечивает strong consistency для всех операций: PUT, GET, DELETE, LIST.",
+      "correctAnswer": true,
+      "explanation": "С декабря 2020 года Amazon S3 обеспечивает strong read-after-write consistency для PUT и DELETE объектов, а также LIST operations. До этого S3 имел eventual consistency для overwrite PUT и DELETE. Это упростило data lakehouse архитектуры, где S3 используется как основное хранилище.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

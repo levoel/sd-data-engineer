@@ -1,0 +1,149 @@
+---
+title: "Requirements Gathering для Data Systems"
+description: "Как собирать и формулировать требования к data-системам: функциональные, нефункциональные, SLA"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["Requirements", "SLA", "Data Contracts", "Non-functional Requirements"]
+---
+
+
+# Requirements Gathering для Data Systems
+
+## Почему требования — это первый шаг
+
+«Design a data pipeline» — так звучит типичная задача на собеседовании. Плохой ответ: сразу рисовать Kafka → Spark → S3. Хороший ответ: **задать вопросы**.
+
+Каждое архитектурное решение зависит от контекста:
+- 1 GB/день — совершенно другая архитектура, чем 1 TB/день
+- «Данные нужны через час» vs «данные нужны через 5 секунд» — разные модели processing
+- Один аналитик vs 500 пользователей BI — разные требования к concurrency
+
+## Типы требований
+
+### 1. Функциональные требования (Что?)
+
+Что система должна делать:
+
+| Вопрос | Пример ответа |
+|--------|---------------|
+| Какие источники данных? | PostgreSQL (OLTP), API третьих сторон, S3 файлы |
+| Какие трансформации нужны? | Очистка, дедупликация, агрегация, join |
+| Кто потребители? | Аналитики (SQL), ML-инженеры (feature store), дашборды (Superset) |
+| Какие выходные данные? | Таблицы в DWH, метрики в Prometheus, файлы в S3 |
+
+### 2. Нефункциональные требования (Как?)
+
+Как система должна работать:
+
+<DiagramContainer title="NFR для Data Systems" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
+    <Tooltip content="Сколько данных в день/час/минуту? Определяет batch vs stream">
+      <DataBox label="Volume" className="text-center">
+        GB/день, TB/день, events/sec
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Как быстро данные должны быть доступны? Секунды, минуты, часы?">
+      <DataBox label="Freshness / Latency" className="text-center">
+        SLA: «Данные готовы к 8:00 UTC»
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Сколько одновременных запросов к данным?">
+      <DataBox label="Concurrency" className="text-center">
+        5 аналитиков vs 500 BI-пользователей
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Допустимый уровень ошибок: дубликаты, пропуски, задержки">
+      <DataBox label="Quality" className="text-center">
+        Допустимый % null, duplicates
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Бюджет на compute и storage. Cloud costs часто доминируют">
+      <DataBox label="Cost" className="text-center">
+        Cloud budget: $X/месяц
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Сколько будет расти? 2x за год? 10x за 3 года?">
+      <DataBox label="Growth" className="text-center">
+        Ожидаемый рост: X/год
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### 3. Data SLA
+
+SLA (Service Level Agreement) для данных — конкретный контракт:
+
+```
+Пример Data SLA:
+
+Датасет: daily_revenue_report
+Freshness: обновляется ежедневно к 06:00 UTC (±30 мин)
+Completeness: ≥ 99.5% записей за каждый день
+Accuracy: revenue отклонение ≤ 0.1% от source-of-truth
+Availability: доступен 99.9% времени
+Owner: Data Engineering Team
+Consumers: Finance Dashboard, CFO Report
+Escalation: PagerDuty → oncall DE → 30 мин response
+```
+
+<Callout type="warning">
+**SLA — это контракт, не пожелание**
+
+Если SLA говорит «данные к 06:00» — пайплайн должен завершиться к 06:00 даже при retry. Это влияет на архитектуру: нужен запас по времени, мониторинг, автоматические алерты при задержке.
+</Callout>
+
+## Чек-лист вопросов для System Design
+
+Перед проектированием спросите:
+
+### Sources
+- [ ] Какие источники данных? (OLTP, API, файлы, события)
+- [ ] Какой формат? (JSON, CSV, Parquet, Avro, протобуф)
+- [ ] Какая частота обновления? (real-time, hourly, daily)
+- [ ] Есть ли schema и как она меняется? (schema evolution)
+- [ ] Есть ли backfill-потребность? (перезагрузка исторических данных)
+
+### Processing
+- [ ] Batch или stream? Или оба?
+- [ ] Какие трансформации? (очистка, join, aggregation, ML)
+- [ ] SLA на freshness?
+- [ ] Нужна ли exactly-once семантика?
+
+### Storage
+- [ ] Кто потребляет? (SQL, API, ML)
+- [ ] Как долго хранить? (retention policy)
+- [ ] Hot/warm/cold tiering нужен?
+- [ ] Нужна ли time travel / versioning?
+
+### Operations
+- [ ] Как мониторить? (metrics, alerts, dashboards)
+- [ ] Как обрабатывать failures? (retry, dead letter queue)
+- [ ] Кто on-call?
+- [ ] Как деплоить изменения? (CI/CD, blue-green)
+
+## Пример: Сбор требований для E-commerce Analytics
+
+> Задача: спроектируйте analytics pipeline для e-commerce компании.
+
+**Вопрос 1:** Какие источники данных?
+- PostgreSQL (orders, users, products) — ~5M orders/месяц
+- Clickstream (page views, button clicks) — ~100M events/день
+- Payment gateway API (Stripe) — webhooks
+
+**Вопрос 2:** Какая freshness нужна?
+- Orders: ≤ 15 минут (для fraud detection)
+- Clickstream: ≤ 1 час (для daily dashboards)
+- Payment: real-time (для reconciliation)
+
+**Вопрос 3:** Кто потребляет?
+- Аналитики (SQL в BI tool) — 20 человек
+- ML team (feature store для recommendation) — 3 модели
+- Finance (ежедневный revenue report к 06:00)
+
+**Результат:** Гибридная архитектура — CDC для orders (near real-time), batch для clickstream, streaming для payments. Lakehouse как storage, dbt для трансформаций.
+
+<KnowledgeCheck>
+Сбор требований — это 30% работы system designer. Без чётких requirements вы не можете обоснованно выбирать между Spark и Flink, warehouse и lakehouse, batch и stream. В следующем уроке: trade-off analysis и как документировать архитектурные решения.
+</KnowledgeCheck>

@@ -1,0 +1,29 @@
+{
+  "id": "sd-data-engineer",
+  "title": "System Design для Data Engineer",
+  "description": "Проектирование data-платформ — от pipeline architecture через lakehouse и streaming до production data operations",
+  "author": "Lev Neganov",
+  "difficulty": "advanced",
+  "language": "ru",
+  "version": "1.0.0",
+  "modules": [
+    { "id": "00-course-intro", "title": "Введение в курс" },
+    { "id": "01-sd-fundamentals", "title": "Основы System Design для DE" },
+    { "id": "02-pipeline-patterns", "title": "Pipeline Architecture Patterns" },
+    { "id": "03-batch-processing", "title": "Batch Processing Systems" },
+    { "id": "04-stream-processing", "title": "Stream Processing Systems" },
+    { "id": "05-warehouse-design", "title": "Data Warehouse Design" },
+    { "id": "06-lakehouse", "title": "Data Lakehouse Architecture" },
+    { "id": "07-data-modeling", "title": "Data Modeling & Schema Design" },
+    { "id": "08-cdc-design", "title": "CDC Pipeline Design" },
+    { "id": "09-data-quality", "title": "Data Quality & Observability" },
+    { "id": "10-orchestration", "title": "Orchestration & Workflow Design" },
+    { "id": "11-governance", "title": "Governance, Cataloging & Lineage" },
+    { "id": "12-feature-store", "title": "Feature Store & ML Pipeline" },
+    { "id": "13-realtime-analytics", "title": "Real-time Analytics & Metrics" },
+    { "id": "14-cost-optimization", "title": "Cost Optimization & Tuning" },
+    { "id": "15-capstone", "title": "Capstone: Data Platform" }
+  ],
+  "tags": ["data-engineering", "system-design", "pipeline", "lakehouse", "streaming", "kafka", "spark", "airflow"],
+  "estimatedHours": 70
+}

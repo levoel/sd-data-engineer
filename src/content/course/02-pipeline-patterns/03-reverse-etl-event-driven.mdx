@@ -1,0 +1,149 @@
+---
+title: "Reverse ETL и Event-Driven Patterns"
+description: "Reverse ETL: отправка данных из warehouse обратно в operational systems. Event-Driven Architecture для data pipelines."
+order: 3
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["Reverse ETL", "Event-Driven", "CDC", "Outbox Pattern", "Data Activation"]
+---
+
+# Reverse ETL и Event-Driven Patterns
+
+## Reverse ETL: Data Activation
+
+Классический ETL: operational systems → DWH. **Reverse ETL**: DWH → operational systems.
+
+<DiagramContainer title="ETL vs Reverse ETL" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="ETL: данные из operational DB → DWH для аналитики">
+      <DataBox label="→ ETL (forward)" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>CRM, PostgreSQL, APIs</div>
+          <div>→ Transform</div>
+          <div>→ Data Warehouse</div>
+          <div className="text-blue-400">Для аналитики</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Reverse ETL: insights из DWH → обратно в CRM, marketing tools, etc.">
+      <DataBox label="← Reverse ETL" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Data Warehouse (gold layer)</div>
+          <div>→ Sync</div>
+          <div>→ CRM, Salesforce, HubSpot, Ads</div>
+          <div className="text-emerald-400">Для action (data activation)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### Use Cases
+
+```
+Reverse ETL Examples:
+
+1. Customer Segments → Salesforce
+   DWH: SELECT users WHERE ltv > 1000 AND last_purchase < 30d
+   → Sync to Salesforce as "High Value Active" segment
+   → Sales team targets them
+
+2. Lead Scoring → HubSpot
+   DWH: ML model computes lead_score per user
+   → Sync scores to HubSpot contact properties
+   → Marketing prioritizes high-score leads
+
+3. Product Recommendations → Email Platform
+   DWH: recommendation model outputs per-user product list
+   → Sync to SendGrid/Braze as personalization data
+   → Personalized email campaigns
+```
+
+### Tools
+
+| Tool | Type | Approach |
+|------|------|---------|
+| **Census** | Reverse ETL | DWH → 150+ destinations |
+| **Hightouch** | Reverse ETL | DWH → operational tools |
+| **dbt + Census** | Combined | Transform + activate |
+| **Airbyte** | Bidirectional | Extract + reverse ETL |
+
+## Event-Driven Architecture
+
+### Паттерн: Event as First-Class Citizen
+
+```
+Traditional: request-response
+  Service A → HTTP POST → Service B → response
+
+Event-driven: publish-subscribe
+  Service A → publish event → Event Bus (Kafka) → 
+    Service B subscribes
+    Service C subscribes
+    Data Pipeline subscribes (!)
+```
+
+### Event-Driven Data Pipeline
+
+<DiagramContainer title="Event-Driven Data Pipeline" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Каждый сервис публикует events в Kafka">
+        <FlowNode variant="input">Service A</FlowNode>
+      </Tooltip>
+      <FlowNode variant="input">Service B</FlowNode>
+      <FlowNode variant="input">Service C</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Kafka как central event bus — единый source of events">
+      <DataBox label="Kafka (Event Bus)" className="border-orange-500/30 w-64 mx-auto">
+        <div className="text-xs">Topics: orders, payments, user-actions</div>
+      </DataBox>
+    </Tooltip>
+    <FlowRow className="gap-6 justify-center">
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <FlowNode variant="process">Flink (real-time)</FlowNode>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <FlowNode variant="process">Spark (batch)</FlowNode>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <FlowNode variant="output">Lakehouse</FlowNode>
+      </div>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Key Patterns
+
+**Outbox Pattern**: гарантированная доставка event при изменении DB
+
+```
+Outbox Pattern:
+1. Service writes to DB: INSERT INTO orders (...)
+2. В ТОЙ ЖЕ транзакции: INSERT INTO outbox (event_type, payload)
+3. CDC (Debezium) читает outbox table → публикует в Kafka
+4. Гарантия: если DB write succeeded, event БУДЕТ опубликован
+
+Без Outbox:
+  Service writes to DB → then publishes to Kafka
+  Проблема: DB write succeeded, Kafka publish failed → inconsistency
+```
+
+**Event Sourcing**: хранить events, не state
+
+```
+Event Sourcing:
+  Не: users.balance = 100 (current state)
+  А: event_log: [deposit(50), deposit(100), withdraw(50)]
+  
+  Current state = replay all events
+  Benefit: full audit trail, time travel, replay
+```
+
+<KnowledgeCheck>
+Reverse ETL активирует данные: DWH insights → operational systems (CRM, marketing). Event-Driven Architecture делает events first-class citizens: services publish → Kafka → pipelines consume. Outbox Pattern гарантирует consistency между DB writes и event publishing. Эти паттерны дополняют Medallion architecture из предыдущего урока.
+</KnowledgeCheck>

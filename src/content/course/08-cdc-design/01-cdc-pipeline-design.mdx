@@ -1,0 +1,159 @@
+---
+title: "CDC Pipeline Design"
+description: "Debezium architecture, log-based vs query-based CDC, exactly-once, schema evolution в CDC pipelines"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 24
+topics: ["CDC", "Debezium", "Change Data Capture", "Log-based CDC", "Schema Evolution", "Exactly-once"]
+---
+
+# CDC Pipeline Design
+
+## Что такое CDC и зачем
+
+**Change Data Capture** — захват изменений из source database в реальном времени. Вместо periodic full scan — stream отдельных INSERT/UPDATE/DELETE.
+
+```
+Без CDC (Batch):
+  Every hour: SELECT * FROM orders WHERE updated_at > last_run
+  Проблемы:
+    - Пропуск DELETE (нет updated_at)
+    - Нагрузка на source DB (full scan)
+    - Задержка = 1 час
+
+С CDC (Streaming):
+  Real-time: каждый INSERT/UPDATE/DELETE → event в Kafka
+  Плюсы:
+    - Captures DELETEs
+    - Минимальная нагрузка (читает WAL, не таблицы)
+    - Задержка = секунды
+```
+
+## Log-based vs Query-based CDC
+
+| Подход | Механизм | Нагрузка на source | Captures DELETEs | Latency |
+|--------|----------|-------------------|-----------------|---------|
+| **Log-based** | Читает WAL/binlog | Минимальная | Да | Секунды |
+| **Query-based** | Polling по timestamp | Высокая | Нет | Минуты |
+| **Trigger-based** | DB triggers | Очень высокая | Да | Мгновенно |
+
+<Callout type="tip">
+**Всегда предпочитайте log-based CDC.** Query-based — fallback для баз без WAL доступа (legacy systems, SaaS APIs).
+</Callout>
+
+## Debezium Architecture
+
+<DiagramContainer title="CDC Pipeline: Source → Debezium → Kafka → Lakehouse" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Source DB: PostgreSQL/MySQL/MongoDB. Debezium читает WAL/binlog">
+        <FlowNode variant="input">PostgreSQL (WAL)</FlowNode>
+      </Tooltip>
+      <FlowNode variant="input">MySQL (Binlog)</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Debezium: Kafka Connect connector. Читает DB log → JSON events">
+      <DataBox label="Debezium (Kafka Connect)" className="border-orange-500/30 w-64 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>Snapshot → Stream</div>
+          <div>Schema registry integration</div>
+          <div>Offset tracking (exactly-once)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Kafka: буфер между source и consumers. Topic per table">
+      <DataBox label="Kafka Topics" className="border-blue-500/30 w-64 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>dbserver.schema.orders</div>
+          <div>dbserver.schema.customers</div>
+          <div>dbserver.schema.products</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Bronze: raw CDC events as-is">
+        <DataBox label="Bronze" className="border-amber-500/30 w-32">
+          <div className="text-xs">Raw CDC events</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Silver: deduplicated, latest state, SCD applied">
+        <DataBox label="Silver" className="border-slate-400/30 w-32">
+          <div className="text-xs">Deduplicated, typed</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Gold: business aggregates optimized for BI">
+        <DataBox label="Gold" className="border-yellow-500/30 w-32">
+          <div className="text-xs">Business metrics</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Debezium Event Structure
+
+```json
+{
+  "before": { "id": 1, "name": "Иван", "city": "Москва" },
+  "after":  { "id": 1, "name": "Иван", "city": "Казань" },
+  "op": "u",          // c=create, u=update, d=delete, r=read(snapshot)
+  "ts_ms": 1700000000,
+  "source": {
+    "connector": "postgresql",
+    "db": "orders_db",
+    "schema": "public",
+    "table": "customers",
+    "lsn": 12345678
+  }
+}
+```
+
+## Exactly-Once CDC
+
+```
+Problem: Debezium restart → may re-send events
+
+Solution layers:
+  1. Debezium: tracks LSN/binlog offset in Kafka Connect offsets
+  2. Kafka: idempotent producer (dedup by sequence number)
+  3. Consumer: idempotent writes
+     - MERGE INTO target USING source ON id = id
+     - Delta Lake: MERGE with deduplication
+     - Iceberg: UPSERT by primary key
+
+End-to-end exactly-once:
+  Kafka transactions + idempotent consumer + dedup on write
+```
+
+## Schema Evolution в CDC
+
+```
+Source DB: ALTER TABLE customers ADD COLUMN phone VARCHAR(20)
+
+Impact on CDC pipeline:
+  1. Debezium detects schema change via WAL
+  2. New events include 'phone' field
+  3. Schema Registry registers new version (v2)
+  4. Consumers must handle both v1 and v2
+
+Strategies:
+  a) Forward compatibility: new fields = NULL for old consumers
+  b) Schema Registry: enforce BACKWARD/FORWARD compatibility
+  c) Bronze layer: store raw (tolerant), validate in Silver
+```
+
+<Callout type="warning">
+**Опасно: breaking schema changes без координации.** `DROP COLUMN` или `RENAME COLUMN` ломает downstream. Всегда: add new → migrate → drop old. Schema Registry enforcement = обязательно в production.
+</Callout>
+
+<Callout type="note">
+**Cross-reference: Debezium CDC Mastery.** Этот урок покрывает CDC с позиции System Design. Для глубокого погружения в Debezium (connectors, transforms, SMTs, monitoring, failover) — курс Debezium CDC Mastery на этой платформе.
+</Callout>
+
+<KnowledgeCheck>
+CDC essentials: Log-based CDC (WAL/binlog) — default approach. Debezium = Kafka Connect connector для CDC. Event: before/after + op (c/u/d/r). Exactly-once: offset tracking + idempotent writes + MERGE. Schema evolution: add → migrate → drop, Schema Registry enforces compatibility. Pipeline: Source → Debezium → Kafka → Bronze → Silver → Gold. В следующем модуле: Data Quality и Observability.
+</KnowledgeCheck>

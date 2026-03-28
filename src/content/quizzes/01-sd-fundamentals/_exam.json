@@ -1,0 +1,146 @@
+{
+  "lessonSlug": "01-sd-fundamentals/_exam",
+  "moduleId": "01-sd-fundamentals",
+  "examTitle": "Экзамен: Основы System Design для Data Engineering",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdde-m01-exam"
+  },
+  "questions": [
+    {
+      "id": "sdde-m01-exam-q1",
+      "type": "multiple-choice",
+      "question": "Компания с 1 TB данных/день хочет: 1) real-time fraud detection (< 5 сек), 2) BI dashboards (hourly), 3) ML model retraining (daily). Бюджет ограничен. Какая архитектура оптимальна?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Полностью streaming: Kafka→Flink для всех трёх use cases"
+        },
+        {
+          "id": "b",
+          "text": "Полностью batch: hourly Spark jobs для всех трёх use cases"
+        },
+        {
+          "id": "c",
+          "text": "Hybrid: streaming (Kafka→Flink) для fraud → Lakehouse (Bronze→Silver→Gold) → hourly micro-batch для BI → daily batch для ML retraining"
+        },
+        {
+          "id": "d",
+          "text": "Lambda architecture: batch + streaming layers с независимыми processing"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Hybrid оптимален: fraud требует < 5 сек (только streaming справится), BI — hourly (micro-batch дешевле streaming), ML — daily (batch самый дешёвый). Все данные через Kafka → Lakehouse (Bronze), далее разные processing paths. Lambda (вариант d) потребует поддержки двух полных стеков, что дороже для ограниченного бюджета.",
+      "studyHint": "Повторите урок 5: 7-Step Framework — шаг 3 (Processing Model) и пример clickstream",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-exam-q2",
+      "type": "multiple-choice",
+      "question": "Spark batch job ежедневно обрабатывает 500 GB данных. SLA: данные готовы к 06:00 UTC. Job обычно завершается за 2 часа, запускается в 03:00. Однажды upstream source задержал данные на 1 час (доступны к 04:00). Что произойдёт с SLA?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SLA нарушен — job завершится к 06:00, но без margin для retry"
+        },
+        {
+          "id": "b",
+          "text": "SLA в порядке — job стартует в 04:00, завершится к 06:00 ровно"
+        },
+        {
+          "id": "c",
+          "text": "Airflow автоматически решит проблему через backfill"
+        },
+        {
+          "id": "d",
+          "text": "SLA нарушен — job стартует в 04:00 + 2 часа обработки = 06:00. Но если потребуется retry (например, из-за data quality issue), SLA будет нарушен. Правильная архитектура должна иметь buffer"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Формально job завершится к 06:00, но без margin: если потребуется retry из-за data quality issue или resource contention — SLA нарушен. Правильный дизайн: запускать раньше (01:00-02:00) с sensor на upstream, оставляя 2-3 часа buffer. Или: event-driven trigger вместо cron schedule.",
+      "studyHint": "Повторите урок 2: Requirements Gathering — раздел Data SLA",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-exam-q3",
+      "type": "multiple-choice",
+      "question": "Какое утверждение о CAP-теореме наиболее релевантно для Data Engineering?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Разные слои data pipeline выбирают разные CAP trade-offs: Kafka = CP per partition (ordering гарантирован), S3 = strong consistency, serving layer = может быть AP (eventual consistency допустима для dashboards)"
+        },
+        {
+          "id": "b",
+          "text": "Data engineering работает только с CP-системами"
+        },
+        {
+          "id": "c",
+          "text": "CAP-теорема не применима к data engineering"
+        },
+        {
+          "id": "d",
+          "text": "Все data tools должны быть AP для максимальной availability"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "CAP применяется на каждом слое: Kafka гарантирует ordering в partition (CP-like), S3 — strong consistency, Cassandra (часто используется для serving) — AP. Data engineer выбирает CAP trade-off для каждого компонента в зависимости от требований этого слоя.",
+      "studyHint": "Повторите урок 4: Distributed Systems — таблица CAP для data tools",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdde-m01-exam-q4",
+      "type": "multiple-choice",
+      "question": "Вы проектируете lakehouse для e-commerce. Ожидаемый рост: 10x за 2 года. Какая стратегия партиционирования для таблицы orders (100M records/день, запросы обычно по date range и region)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hash partitioning по order_id — равномерное распределение"
+        },
+        {
+          "id": "b",
+          "text": "Range partitioning по order_date + clustering по region — оптимально для типичных query patterns (date range + region filter)"
+        },
+        {
+          "id": "c",
+          "text": "Без партиционирования — Iceberg справится с full table scan"
+        },
+        {
+          "id": "d",
+          "text": "List partitioning по region — каждый регион в своей партиции"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Range partitioning по дате: запросы 'revenue за последние 7 дней' читают только 7 партиций вместо full scan. Clustering по region: внутри date-партиции данные физически сгруппированы по region, ускоряя filter. Hash по order_id — бесполезно (запросы не фильтруют по order_id). При 10x росте этот подход масштабируется линейно.",
+      "studyHint": "Повторите урок 4: Distributed Systems — раздел Partitioning и стратегии",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m01-exam-q5",
+      "type": "multiple-choice",
+      "question": "По 7-Step Framework, на шаге 6 (Operational Layer) вы добавляете data quality checks. Pipeline обрабатывает payment data. Какие 3 metric наиболее критичны?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Record count, file size, processing time"
+        },
+        {
+          "id": "b",
+          "text": "Schema версия, compression ratio, partition count"
+        },
+        {
+          "id": "c",
+          "text": "Completeness (% null в обязательных полях), Accuracy (сумма платежей reconciles с source), Freshness (данные доступны в рамках SLA)"
+        },
+        {
+          "id": "d",
+          "text": "CPU usage, memory consumption, disk I/O"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Для payment data: 1) Completeness — null в payment_amount = потерянный revenue insight, 2) Accuracy — сумма в pipeline должна reconcile с source (Stripe/bank), расхождение = баг, 3) Freshness — SLA breach = finance team без данных для reconciliation. Технические метрики (CPU, disk) важны для ops, но не для data quality.",
+      "studyHint": "Повторите урок 2: Requirements — Data SLA и урок 5: Framework — шаг 6 Operational Layer",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

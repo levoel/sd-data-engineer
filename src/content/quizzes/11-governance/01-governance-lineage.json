@@ -1,0 +1,57 @@
+{
+  "lessonSlug": "11-governance/01-governance-lineage",
+  "moduleId": "11-governance",
+  "_meta": {
+    "idPrefix": "sdde-m11-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m11-01-q1",
+      "type": "multiple-choice",
+      "question": "GDPR запрос: удалить все данные пользователя (customer_id = 12345). Lakehouse: Bronze, Silver, Gold layers. Как выполнить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Catalog lookup → найти все таблицы с customer_id через lineage. Bronze: soft delete (mark, retain for audit). Silver: DELETE WHERE customer_id = 12345. Gold: re-aggregate без user's data. Audit log: запись о выполнении запроса. Срок: до 30 дней (GDPR requirement)"
+        },
+        {
+          "id": "b",
+          "text": "Удалить только из Gold — dashboard больше не покажет"
+        },
+        {
+          "id": "c",
+          "text": "Отключить доступ пользователя к dashboard"
+        },
+        {
+          "id": "d",
+          "text": "Пометить данные как 'deleted' во всех таблицах"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "GDPR Right to Erasure: данные должны быть удалены или анонимизированы из всех слоёв. Catalog + lineage → находим все таблицы. Bronze: soft delete (нужен для audit trail). Silver/Gold: physical delete или anonymization. Iceberg/Delta поддерживают DELETE operations. Audit log — доказательство compliance.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m11-01-q2",
+      "type": "multiple-choice",
+      "question": "BI dashboard показывает revenue = $500K. CFO говорит: 'Откуда эта цифра? Она неверная.' Как быстро ответить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверить каждую таблицу вручную"
+        },
+        {
+          "id": "b",
+          "text": "Column-level lineage: в Data Catalog (OpenMetadata/DataHub) проследить dashboard.revenue → gold.daily_revenue.total → silver.orders.amount → bronze.raw_orders.amount → source DB. Найти точку, где данные расходятся с ожиданием"
+        },
+        {
+          "id": "c",
+          "text": "Пересчитать всё с нуля"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Column-level lineage: трассировка от dashboard → Gold → Silver → Bronze → Source. На каждом уровне: проверить значение, найти расхождение. Data catalog с lineage позволяет ответить за минуты вместо часов. Без lineage: manual investigation через SQL queries по каждой таблице.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "lessonSlug": "09-data-quality/01-data-quality-observability",
+  "moduleId": "09-data-quality",
+  "_meta": {
+    "idPrefix": "sdde-m09-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m09-01-q1",
+      "type": "multiple-choice",
+      "question": "Pipeline обработал данные, но daily row count в Silver упал на 40% без видимых ошибок. Какой data quality dimension нарушен и как предотвратить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Accuracy — данные некорректные"
+        },
+        {
+          "id": "b",
+          "text": "Uniqueness — есть дубликаты"
+        },
+        {
+          "id": "c",
+          "text": "Freshness — данные устарели"
+        },
+        {
+          "id": "d",
+          "text": "Completeness: ожидаемый row count не выполнен. Предотвращение: anomaly detection на volume (alert если count отклоняется более 30% от 7-day moving average). Great Expectations: expect_table_row_count_to_be_between"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Completeness = все ожидаемые данные на месте. 40% drop = source issue или filter bug. Detection: row count check against historical baseline. Prevention: Great Expectations test + anomaly detection (Z-score или moving average). Alert ПЕРЕД записью в Gold → gate quality.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m09-01-q2",
+      "type": "multiple-choice",
+      "question": "Команда настроила 200 data quality alerts. Результат: on-call engineer игнорирует все alerts (alert fatigue). Как исправить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Tiered alerting: P1 (PagerDuty, page on-call) = SLA breach / pipeline failure. P2 (Slack channel) = quality check failure / volume anomaly. P3 (Jira ticket) = schema drift / minor issues. Reduce 200 → 15-20 actionable alerts"
+        },
+        {
+          "id": "b",
+          "text": "Добавить ещё больше alerts"
+        },
+        {
+          "id": "c",
+          "text": "Отключить все alerts"
+        },
+        {
+          "id": "d",
+          "text": "Нанять больше on-call инженеров"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Alert fatigue = too many low-priority alerts. Tiered approach: P1 (critical, page immediately) < 5 alerts. P2 (important, Slack) < 15 alerts. P3 (informational, ticket) = rest. Review quarterly: alerts never actioned → delete. Каждый alert должен иметь runbook.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m09-01-q3",
+      "type": "multiple-choice",
+      "question": "Что такое Data Contract (ODCS) и какую проблему он решает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Юридический договор между командами"
+        },
+        {
+          "id": "b",
+          "text": "Формат хранения данных"
+        },
+        {
+          "id": "c",
+          "text": "API для данных: producer гарантирует schema + SLA (freshness, completeness, availability). Consumer знает, что ожидать. Изменения через versioning. Предотвращает: breaking schema changes, SLA violations без предупреждения"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Data Contract = interface specification для данных. Producer обязуется: schema (columns, types, constraints), SLA (freshness 1h, completeness 99.5%), availability (99.9%). Consumer планирует на основе контракта. Breaking changes → version bump → migration period. ODCS = Open Data Contract Standard.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

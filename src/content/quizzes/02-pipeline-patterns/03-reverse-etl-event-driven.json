@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "02-pipeline-patterns/03-reverse-etl-event-driven",
+  "moduleId": "02-pipeline-patterns",
+  "_meta": {
+    "idPrefix": "sdde-m02-03"
+  },
+  "questions": [
+    {
+      "id": "sdde-m02-03-q1",
+      "type": "multiple-choice",
+      "question": "Сервис записывает order в PostgreSQL и публикует event в Kafka. Если DB write succeeded но Kafka publish failed — данные inconsistent. Какой паттерн решает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Retry publish до успеха"
+        },
+        {
+          "id": "b",
+          "text": "Two-Phase Commit между DB и Kafka"
+        },
+        {
+          "id": "c",
+          "text": "Outbox Pattern: записать event в outbox table в ТОЙ ЖЕ DB транзакции. CDC (Debezium) читает outbox → публикует в Kafka. DB transaction гарантирует atomic write"
+        },
+        {
+          "id": "d",
+          "text": "Игнорировать — eventual consistency достаточно"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Outbox Pattern: INSERT order + INSERT outbox_event в одной DB transaction (ACID). CDC (Debezium) читает outbox table и публикует в Kafka. Если DB write failed → обе записи rollback. Если succeeded → event ГАРАНТИРОВАННО будет в Kafka. Retry (a) не гарантирует delivery. 2PC (c) слишком сложный.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m02-03-q2",
+      "type": "true-false",
+      "question": "Reverse ETL — это процесс отправки insights из Data Warehouse обратно в operational системы (CRM, marketing tools) для Data Activation.",
+      "correctAnswer": true,
+      "explanation": "Reverse ETL = Data Activation: результаты аналитики из DWH (customer segments, lead scores, recommendations) синхронизируются обратно в operational tools (Salesforce, HubSpot, email platforms). Tools: Census, Hightouch. Дополняет forward ETL: forward (ops→DWH) + reverse (DWH→ops) = full data loop.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

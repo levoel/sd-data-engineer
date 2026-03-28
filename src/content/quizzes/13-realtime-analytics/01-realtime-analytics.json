@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "13-realtime-analytics/01-realtime-analytics",
+  "moduleId": "13-realtime-analytics",
+  "_meta": {
+    "idPrefix": "sdde-m13-01"
+  },
+  "questions": [
+    {
+      "id": "sdde-m13-01-q1",
+      "type": "multiple-choice",
+      "question": "Product team требует real-time dashboard с обновлением каждые 5 секунд и query latency под 200ms. Сейчас используется BigQuery (query time 3-15 sec). Решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "OLAP engine (ClickHouse/Pinot): Kafka → ClickHouse (Kafka engine для real-time ingestion). Materialized views для pre-aggregation. Query latency: 10-100ms. BigQuery остаётся для batch analytics и ad-hoc queries"
+        },
+        {
+          "id": "b",
+          "text": "Оптимизировать BigQuery запросы"
+        },
+        {
+          "id": "c",
+          "text": "Кэшировать BigQuery результаты в Redis"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить BigQuery slot capacity"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "BigQuery не предназначен для sub-second queries с 5-sec refresh. OLAP engine: ClickHouse принимает данные из Kafka в real-time, materialized views pre-aggregate → query за 10-100ms. BigQuery + ClickHouse = batch analytics + real-time dashboards. Caching (c) — workaround, не решает freshness.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdde-m13-01-q2",
+      "type": "multiple-choice",
+      "question": "API endpoint для metrics: 1000 concurrent users, каждый запрашивает 'revenue by region last 24h'. Raw table: 100M events/day. Как обеспечить p99 под 100ms?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Scan raw table каждый раз — 100M rows за 100ms невозможно"
+        },
+        {
+          "id": "b",
+          "text": "Pre-aggregation: materialized view hourly_revenue_by_region (24 rows/day × N regions). Query = scan ~100 rows → under 1ms. Caching layer (Redis, TTL=60s) для hot queries. Result: handle 1000 concurrent with sub-ms query + cache"
+        },
+        {
+          "id": "c",
+          "text": "Горизонтально масштабировать OLAP cluster"
+        },
+        {
+          "id": "d",
+          "text": "Rate-limit API до 10 concurrent users"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Pre-aggregation: 100M raw → 24 × N_regions hourly aggregates. Query over aggregates: scan hundreds of rows → milliseconds. Redis cache (TTL=60s): 1000 users reading same metrics → cache hit ratio 99%+. Two-layer optimization: pre-aggregate + cache = sub-ms for most requests.",
+      "bloomLevel": "applied"
+    }
+  ]
+}
