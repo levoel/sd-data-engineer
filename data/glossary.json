@@ -1,0 +1,449 @@
+{
+  "categories": [
+    {
+      "id": "sd-fundamentals",
+      "name": "Основы System Design",
+      "terms": [
+        {
+          "term": "System Design",
+          "termEn": "System Design",
+          "definition": "Процесс проектирования архитектуры распределённых систем с учётом требований к масштабируемости, надёжности и производительности. Включает выбор компонентов, определение интерфейсов между ними и анализ компромиссов. В контексте Data Engineering фокус на проектировании data pipeline-ов и storage-систем.",
+          "example": "# Типичный System Design процесс\n1. Сбор требований (functional + non-functional)\n2. Оценка нагрузки (QPS, data volume, latency)\n3. High-level design (компоненты + потоки данных)\n4. Детализация (storage, processing, serving)\n5. Анализ bottleneck-ов и tradeoff-ов",
+          "relatedLessons": [
+            { "title": "Что такое System Design для DE", "slug": "01-sd-fundamentals/01-what-is-de-sd" },
+            { "title": "Фреймворк проектирования", "slug": "01-sd-fundamentals/05-sd-framework" }
+          ]
+        },
+        {
+          "term": "CAP-теорема",
+          "termEn": "CAP Theorem",
+          "definition": "Теорема Брюера, утверждающая что распределённая система может одновременно обеспечить только два из трёх свойств: Consistency (согласованность), Availability (доступность), Partition tolerance (устойчивость к разделению сети). На практике partition tolerance обязателен, поэтому выбор стоит между CP и AP системами.",
+          "example": "# CP-системы (Consistency + Partition tolerance)\n# HBase, MongoDB (с majority write concern)\n# → Откажут в обслуживании при network partition\n\n# AP-системы (Availability + Partition tolerance)\n# Cassandra, DynamoDB\n# → Вернут устаревшие данные при partition\n\n# Пример: Kafka — AP для producers, CP для consumers с read_committed",
+          "relatedLessons": [
+            { "title": "Распределённые системы", "slug": "01-sd-fundamentals/04-distributed-systems" },
+            { "title": "Анализ компромиссов", "slug": "01-sd-fundamentals/03-tradeoff-analysis" }
+          ]
+        },
+        {
+          "term": "Tradeoff Analysis",
+          "termEn": "Tradeoff Analysis",
+          "definition": "Методология систематической оценки компромиссов при проектировании систем. Каждое архитектурное решение усиливает одни качества за счёт других: latency vs throughput, consistency vs availability, cost vs performance. Результат — обоснованный выбор с документированными последствиями.",
+          "example": "# Пример tradeoff: выбор формата хранения\n#\n# Parquet:\n#   + Columnar → быстрые аналитические запросы\n#   + Compression → меньше storage cost\n#   - Медленная запись (row → column конвертация)\n#\n# Avro:\n#   + Быстрая запись (row-based)\n#   + Schema evolution\n#   - Медленнее для аналитики\n#\n# Решение: Avro для ingestion, Parquet для serving",
+          "relatedLessons": [
+            { "title": "Анализ компромиссов", "slug": "01-sd-fundamentals/03-tradeoff-analysis" },
+            { "title": "Сбор требований", "slug": "01-sd-fundamentals/02-requirements-gathering" }
+          ]
+        },
+        {
+          "term": "Распределённые системы",
+          "termEn": "Distributed Systems",
+          "definition": "Набор независимых компьютеров, работающих совместно как единая система. Характеризуются отсутствием общего состояния, частичными отказами и недетерминированной латентностью сети. Ключевые паттерны: репликация, шардирование, консенсус (Raft/Paxos), eventual consistency.",
+          "example": "# Fallacies of Distributed Computing\n# 1. Сеть надёжна → нет, нужен retry + timeout\n# 2. Латентность нулевая → нет, нужен batching\n# 3. Пропускная способность бесконечна → нет, нужен backpressure\n# 4. Сеть безопасна → нет, нужен TLS + authN\n\n# Пример: Kafka — распределённый лог\n# Partitions → параллелизм\n# Replication factor 3 → отказоустойчивость\n# ISR (In-Sync Replicas) → consistency guarantee",
+          "relatedLessons": [
+            { "title": "Распределённые системы", "slug": "01-sd-fundamentals/04-distributed-systems" },
+            { "title": "Что такое System Design для DE", "slug": "01-sd-fundamentals/01-what-is-de-sd" }
+          ]
+        },
+        {
+          "term": "SLA / SLO / SLI",
+          "termEn": "SLA / SLO / SLI",
+          "definition": "Трёхуровневая система метрик надёжности. SLI (Service Level Indicator) — конкретная метрика (p99 latency, availability %). SLO (Service Level Objective) — целевое значение SLI (p99 < 200ms). SLA (Service Level Agreement) — юридическое соглашение с последствиями нарушения SLO. Для data pipeline-ов: freshness SLI, completeness SLI, accuracy SLI.",
+          "example": "# SLI для data pipeline:\n#   freshness: время от события до доступности в DWH\n#   completeness: % записей без потерь\n#   accuracy: % корректных трансформаций\n\n# SLO:\n#   freshness < 15 min (p99)\n#   completeness > 99.9%\n#   accuracy > 99.99%\n\n# SLA:\n#   Нарушение freshness > 1 час → алерт oncall\n#   Нарушение completeness < 99% → incident P1",
+          "relatedLessons": [
+            { "title": "Сбор требований", "slug": "01-sd-fundamentals/02-requirements-gathering" },
+            { "title": "Фреймворк проектирования", "slug": "01-sd-fundamentals/05-sd-framework" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pipeline-architecture",
+      "name": "Pipeline Architecture",
+      "terms": [
+        {
+          "term": "ETL / ELT",
+          "termEn": "ETL / ELT",
+          "definition": "Два основных паттерна интеграции данных. ETL (Extract-Transform-Load) трансформирует данные до загрузки в целевую систему — подходит для ограниченного storage. ELT (Extract-Load-Transform) загружает сырые данные и трансформирует на месте — доминирует в cloud-era благодаря дешёвому storage и мощному compute (BigQuery, Snowflake).",
+          "example": "# ETL: трансформация до загрузки\nraw_data = extract(source_db)\ncleaned = transform(raw_data)  # в памяти ETL-сервера\nload(cleaned, target_warehouse)\n\n# ELT: загрузка → трансформация в warehouse\nraw_data = extract(source_db)\nload(raw_data, staging_table)  # as-is в warehouse\n# dbt model трансформирует в warehouse\n# SELECT cleaned_col FROM staging_table WHERE ...",
+          "relatedLessons": [
+            { "title": "ETL, ELT и Zero-ETL", "slug": "02-pipeline-patterns/01-etl-elt-zero-etl" },
+            { "title": "Reverse ETL и Event-Driven", "slug": "02-pipeline-patterns/03-reverse-etl-event-driven" }
+          ]
+        },
+        {
+          "term": "Lambda Architecture",
+          "termEn": "Lambda Architecture",
+          "definition": "Архитектурный паттерн, объединяющий batch и speed layer для обработки данных. Batch layer обеспечивает полноту и точность (переобработка всей истории), speed layer — низкую латентность (инкрементальные обновления). Serving layer объединяет результаты. Недостаток: дублирование логики между двумя слоями.",
+          "example": "# Lambda Architecture\n#\n# ┌─────────┐    ┌──────────────┐    ┌──────────────┐\n# │  Source  │───→│  Batch Layer │───→│              │\n# │  Events  │    │  (Spark)     │    │  Serving     │\n# │          │───→│  Speed Layer │───→│  Layer       │\n# └─────────┘    │  (Flink)     │    │  (Druid)     │\n#                └──────────────┘    └──────────────┘\n#\n# Batch: ежечасный пересчёт агрегатов\n# Speed: real-time дельта с последнего batch",
+          "relatedLessons": [
+            { "title": "Lambda, Kappa и Medallion", "slug": "02-pipeline-patterns/02-lambda-kappa-medallion" }
+          ]
+        },
+        {
+          "term": "Kappa Architecture",
+          "termEn": "Kappa Architecture",
+          "definition": "Упрощённая альтернатива Lambda Architecture, использующая только stream processing для всех задач. Все данные проходят через единый потоковый слой (Kafka + Flink/Spark Streaming). Переобработка выполняется replay из того же потока. Устраняет дублирование логики, но требует зрелой stream-инфраструктуры.",
+          "example": "# Kappa Architecture — единый поток\n#\n# ┌─────────┐    ┌──────────────┐    ┌──────────────┐\n# │  Source  │───→│  Stream      │───→│  Serving     │\n# │  Events  │    │  Processor   │    │  Layer       │\n# └─────────┘    │  (Flink)     │    │  (ClickHouse)│\n#                └──────────────┘    └──────────────┘\n#\n# Переобработка: replay topic с offset 0\n# Нет batch layer → единая кодовая база",
+          "relatedLessons": [
+            { "title": "Lambda, Kappa и Medallion", "slug": "02-pipeline-patterns/02-lambda-kappa-medallion" }
+          ]
+        },
+        {
+          "term": "Medallion Architecture",
+          "termEn": "Medallion Architecture",
+          "definition": "Трёхслойная архитектура данных: Bronze (сырые данные as-is), Silver (очищенные и нормализованные), Gold (бизнес-агрегаты и витрины). Каждый слой повышает качество данных. Доминирует в Lakehouse-платформах (Databricks, Delta Lake). Обеспечивает lineage, incremental processing и data quality gates между слоями.",
+          "example": "# Bronze → Silver → Gold\n#\n# Bronze: raw JSON events из Kafka\n# spark.readStream.format('kafka')...writeStream.format('delta')\n#\n# Silver: parsed, deduplicated, typed\n# spark.read.format('delta').load('/bronze/events')\n#   .dropDuplicates(['event_id'])\n#   .withColumn('ts', to_timestamp('raw_ts'))\n#   .write.format('delta').save('/silver/events')\n#\n# Gold: business aggregates\n# spark.read.format('delta').load('/silver/events')\n#   .groupBy('date', 'product_id').agg(sum('revenue'))\n#   .write.format('delta').save('/gold/daily_revenue')",
+          "relatedLessons": [
+            { "title": "Lambda, Kappa и Medallion", "slug": "02-pipeline-patterns/02-lambda-kappa-medallion" },
+            { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" }
+          ]
+        },
+        {
+          "term": "Reverse ETL",
+          "termEn": "Reverse ETL",
+          "definition": "Паттерн синхронизации данных из Data Warehouse обратно в операционные системы (CRM, маркетинг, поддержка). Замыкает цикл данных: operational DB → warehouse → обогащённые данные → operational tools. Инструменты: Census, Hightouch, custom Airflow DAG.",
+          "example": "# Reverse ETL: DWH → Salesforce\n#\n# 1. Модель в dbt (Gold layer):\n#    SELECT user_id, ltv_score, churn_risk\n#    FROM gold.user_segments\n#\n# 2. Sync job (Census / Hightouch):\n#    Source: gold.user_segments\n#    Destination: Salesforce.Contact\n#    Mapping: ltv_score → Custom_LTV__c\n#    Schedule: every 4 hours\n#    Mode: upsert on user_id",
+          "relatedLessons": [
+            { "title": "Reverse ETL и Event-Driven", "slug": "02-pipeline-patterns/03-reverse-etl-event-driven" },
+            { "title": "ETL, ELT и Zero-ETL", "slug": "02-pipeline-patterns/01-etl-elt-zero-etl" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "batch-stream",
+      "name": "Batch и Stream Processing",
+      "terms": [
+        {
+          "term": "Batch Processing",
+          "termEn": "Batch Processing",
+          "definition": "Обработка данных конечными порциями (batch) по расписанию. Данные накапливаются за период (час, день), затем обрабатываются целиком. Преимущества: простота, оптимальное использование ресурсов, возможность переобработки. Недостаток: высокая латентность (минуты-часы). Основные инструменты: Apache Spark, dbt.",
+          "example": "# Spark batch job — ежедневная агрегация\ndf = spark.read.parquet(f'/data/events/dt={yesterday}')\n\naggregated = df \\\n    .filter(col('event_type') == 'purchase') \\\n    .groupBy('product_id') \\\n    .agg(\n        count('*').alias('order_count'),\n        sum('amount').alias('total_revenue')\n    )\n\naggregated.write \\\n    .mode('overwrite') \\\n    .partitionBy('product_id') \\\n    .parquet(f'/output/daily_revenue/dt={yesterday}')",
+          "relatedLessons": [
+            { "title": "Паттерны Batch Pipeline", "slug": "03-batch-processing/02-batch-pipeline-patterns" },
+            { "title": "Архитектура Spark", "slug": "03-batch-processing/01-spark-architecture" }
+          ]
+        },
+        {
+          "term": "Micro-batch",
+          "termEn": "Micro-batch",
+          "definition": "Промежуточный подход между batch и true streaming: данные обрабатываются маленькими порциями с интервалом от секунд до минут. Spark Structured Streaming использует micro-batch по умолчанию (trigger interval). Проще в реализации чем true streaming, но с более высокой латентностью (секунды vs миллисекунды).",
+          "example": "# Spark Structured Streaming — micro-batch\ndf = spark.readStream \\\n    .format('kafka') \\\n    .option('subscribe', 'events') \\\n    .load()\n\nresult = df \\\n    .selectExpr(\"CAST(value AS STRING)\") \\\n    .select(from_json('value', schema).alias('data')) \\\n    .select('data.*')\n\nresult.writeStream \\\n    .trigger(processingTime='30 seconds')  # micro-batch каждые 30 сек\\\n    .format('delta') \\\n    .start('/silver/events')",
+          "relatedLessons": [
+            { "title": "Архитектура Spark", "slug": "03-batch-processing/01-spark-architecture" },
+            { "title": "Flink: Watermarks и Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" }
+          ]
+        },
+        {
+          "term": "Stream Processing",
+          "termEn": "Stream Processing",
+          "definition": "Непрерывная обработка данных по мере их поступления (event-by-event или small window). Обеспечивает латентность от миллисекунд до секунд. Ключевые концепции: event time vs processing time, watermarks, windows, exactly-once semantics. Основные инструменты: Apache Flink, Apache Kafka Streams.",
+          "example": "# Flink — stream processing с event time\nenv = StreamExecutionEnvironment.get_execution_environment()\n\nevents = env \\\n    .add_source(FlinkKafkaConsumer('events', schema, props)) \\\n    .assign_timestamps_and_watermarks(\n        WatermarkStrategy\n            .for_bounded_out_of_orderness(Duration.of_seconds(10))\n            .with_timestamp_assigner(EventTimestampAssigner())\n    )\n\nevents \\\n    .key_by(lambda e: e.user_id) \\\n    .window(TumblingEventTimeWindows.of(Time.minutes(5))) \\\n    .aggregate(CountAggregateFunction()) \\\n    .add_sink(sink)",
+          "relatedLessons": [
+            { "title": "Архитектура Kafka", "slug": "04-stream-processing/01-kafka-architecture" },
+            { "title": "Flink: Watermarks и Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" }
+          ]
+        },
+        {
+          "term": "Event Time / Processing Time",
+          "termEn": "Event Time / Processing Time",
+          "definition": "Два временных домена в stream processing. Event time — момент создания события в source-системе. Processing time — момент обработки события в stream processor. Разница между ними (event time skew) вызвана сетевыми задержками, backpressure и out-of-order delivery. Корректные агрегаты требуют event time + watermarks.",
+          "example": "# Event time vs Processing time\n#\n# Event создан: 10:00:05 (event time)\n# Доставлен в Kafka: 10:00:07\n# Обработан Flink: 10:00:12 (processing time)\n# Skew: 7 секунд\n#\n# Окно 10:00 - 10:05 по event time:\n#   → Событие 10:00:05 попадёт в это окно\n#\n# Окно 10:00 - 10:05 по processing time:\n#   → Событие НЕ попадёт (processing time = 10:00:12)\n#\n# Вывод: event time = корректные бизнес-метрики",
+          "relatedLessons": [
+            { "title": "Flink: Watermarks и Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" }
+          ]
+        },
+        {
+          "term": "Watermark",
+          "termEn": "Watermark",
+          "definition": "Механизм отслеживания прогресса event time в stream processing. Watermark(t) означает: 'все события с event time ≤ t уже получены'. Позволяет системе решить когда закрывать временные окна. Bounded out-of-orderness: watermark = max_event_time - allowed_lateness. Поздние события после watermark отбрасываются или обрабатываются отдельно.",
+          "example": "# Watermark с допуском 10 секунд\n#\n# Поток событий:\n# event(time=10:00:01) → watermark = 09:59:51\n# event(time=10:00:08) → watermark = 09:59:58\n# event(time=10:00:15) → watermark = 10:00:05\n#\n# Окно [10:00:00, 10:00:05) закрывается\n# когда watermark >= 10:00:05\n#\n# Late event (time=10:00:03, arrived at 10:00:20)\n# watermark уже 10:00:10 → событие отброшено",
+          "relatedLessons": [
+            { "title": "Flink: Watermarks и Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" },
+            { "title": "Архитектура Kafka", "slug": "04-stream-processing/01-kafka-architecture" }
+          ]
+        },
+        {
+          "term": "Exactly-Once Semantics",
+          "termEn": "Exactly-Once Semantics",
+          "definition": "Гарантия, что каждое событие обработано ровно один раз, даже при сбоях. Реализуется через: idempotent writes + at-least-once delivery, либо транзакционный протокол (Kafka transactions, Flink checkpoints + two-phase commit). Самая сильная и дорогая гарантия доставки. Альтернативы: at-most-once (потеря), at-least-once (дупликаты).",
+          "example": "# Kafka exactly-once: transactional producer + consumer\nproducer = KafkaProducer(\n    transactional_id='etl-job-01',\n    enable_idempotence=True\n)\nproducer.init_transactions()\n\ntry:\n    producer.begin_transaction()\n    producer.send('output-topic', value=result)\n    producer.send_offsets_to_transaction(\n        {tp: offset}, consumer_group_id\n    )\n    producer.commit_transaction()\nexcept:\n    producer.abort_transaction()",
+          "relatedLessons": [
+            { "title": "Архитектура Kafka", "slug": "04-stream-processing/01-kafka-architecture" },
+            { "title": "Flink: Watermarks и Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "storage-warehouse",
+      "name": "Storage и Warehouse",
+      "terms": [
+        {
+          "term": "Data Warehouse",
+          "termEn": "Data Warehouse",
+          "definition": "Централизованное хранилище структурированных данных, оптимизированное для аналитических запросов (OLAP). Данные загружаются из операционных систем, очищаются и организуются в dimensional model. Характеристики: schema-on-write, columnar storage, MPP execution. Примеры: Snowflake, BigQuery, Redshift.",
+          "example": "-- Типичный аналитический запрос в DWH\nSELECT\n    d.month_name,\n    p.category,\n    SUM(f.revenue) as total_revenue,\n    COUNT(DISTINCT f.customer_id) as unique_customers\nFROM fact_sales f\nJOIN dim_date d ON f.date_key = d.date_key\nJOIN dim_product p ON f.product_key = p.product_key\nWHERE d.year = 2024\nGROUP BY d.month_name, p.category\nORDER BY total_revenue DESC;",
+          "relatedLessons": [
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" },
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" }
+          ]
+        },
+        {
+          "term": "Data Lake",
+          "termEn": "Data Lake",
+          "definition": "Хранилище данных в сыром формате без предварительной схемы (schema-on-read). Хранит структурированные, полуструктурированные и неструктурированные данные в object storage (S3, GCS, ADLS). Низкая стоимость хранения, но требует governance для предотвращения data swamp. Основа Medallion Architecture (Bronze layer).",
+          "example": "# Data Lake на S3 — структура директорий\n# s3://company-datalake/\n# ├── raw/                    # Bronze: as-is\n# │   ├── salesforce/\n# │   ├── clickstream/\n# │   └── iot-sensors/\n# ├── processed/              # Silver: cleaned\n# │   ├── users/\n# │   └── events/\n# └── curated/                # Gold: business-ready\n#     ├── daily_revenue/\n#     └── user_segments/",
+          "relatedLessons": [
+            { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" },
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" }
+          ]
+        },
+        {
+          "term": "Lakehouse",
+          "termEn": "Lakehouse",
+          "definition": "Архитектура, объединяющая гибкость Data Lake (дешёвый object storage, открытые форматы) с возможностями Data Warehouse (ACID, schema enforcement, SQL analytics). Реализуется через table formats: Delta Lake, Apache Iceberg, Apache Hudi. Обеспечивает time travel, schema evolution, уникальность и транзакции поверх Parquet-файлов.",
+          "example": "# Delta Lake — Lakehouse операции\n# ACID транзакции на Parquet\ndf.write.format('delta') \\\n    .mode('overwrite') \\\n    .save('/lakehouse/silver/orders')\n\n# Time travel — чтение версии 3\nspark.read.format('delta') \\\n    .option('versionAsOf', 3) \\\n    .load('/lakehouse/silver/orders')\n\n# MERGE (upsert) — CDC применение\nDeltaTable.forPath(spark, '/lakehouse/silver/orders') \\\n    .merge(updates, 'target.id = source.id') \\\n    .whenMatchedUpdateAll() \\\n    .whenNotMatchedInsertAll() \\\n    .execute()",
+          "relatedLessons": [
+            { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" }
+          ]
+        },
+        {
+          "term": "Columnar Format",
+          "termEn": "Columnar Format",
+          "definition": "Формат хранения, организующий данные по столбцам вместо строк. Оптимален для аналитики: читает только нужные колонки (column pruning), эффективно сжимает однородные данные. Apache Parquet — стандарт де-факто. Альтернативы: ORC (Hive-экосистема), Apache Arrow (in-memory columnar). Недостаток: медленнее для point lookups и inserts.",
+          "example": "# Row-oriented vs Columnar — чтение SELECT name, age\n#\n# Row: читаем ВСЕ колонки каждой строки\n# [id=1, name='Alice', age=30, city='NY', ...]\n# [id=2, name='Bob', age=25, city='LA', ...]\n# → Читаем 100% данных, используем 20%\n#\n# Columnar: читаем только нужные столбцы\n# name: ['Alice', 'Bob', ...]\n# age:  [30, 25, ...]\n# → Читаем 20% данных, используем 100%\n#\n# Parquet файл: ~10x compression vs CSV\n# 1 TB CSV ≈ 100 GB Parquet",
+          "relatedLessons": [
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" },
+            { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" }
+          ]
+        },
+        {
+          "term": "Partitioning",
+          "termEn": "Partitioning",
+          "definition": "Разделение данных на физически изолированные сегменты по ключу (дата, регион, category). Позволяет query engine пропускать нерелевантные partition-ы (partition pruning), значительно ускоряя запросы. В Hive-style partitioning директория кодирует ключ: /dt=2024-01-15/. Выбор partition key критичен: слишком мелкое — small file problem, слишком крупное — нет pruning.",
+          "example": "# Hive-style partitioning в Spark\ndf.write \\\n    .partitionBy('year', 'month', 'day') \\\n    .format('parquet') \\\n    .save('/data/events')\n\n# Структура на диске:\n# /data/events/year=2024/month=01/day=15/part-00000.parquet\n# /data/events/year=2024/month=01/day=16/part-00000.parquet\n\n# Запрос с partition pruning:\n# SELECT * FROM events WHERE year=2024 AND month=01\n# → Читает только 31 директорию вместо 365",
+          "relatedLessons": [
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" },
+            { "title": "Паттерны Batch Pipeline", "slug": "03-batch-processing/02-batch-pipeline-patterns" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data-modeling",
+      "name": "Data Modeling",
+      "terms": [
+        {
+          "term": "Dimensional Modeling",
+          "termEn": "Dimensional Modeling",
+          "definition": "Методология проектирования хранилищ данных Ральфа Кимбалла. Организует данные вокруг бизнес-процессов: fact-таблицы содержат измеримые метрики, dimension-таблицы — описательные атрибуты. Оптимизирована для понятности бизнес-пользователям и производительности аналитических запросов. Реализуется как star schema или snowflake schema.",
+          "example": "-- Dimensional model: продажи\n-- Fact table: зернистость = одна транзакция\nCREATE TABLE fact_sales (\n    sale_id BIGINT,\n    date_key INT,       -- FK → dim_date\n    product_key INT,    -- FK → dim_product\n    customer_key INT,   -- FK → dim_customer\n    store_key INT,      -- FK → dim_store\n    quantity INT,       -- measure\n    amount DECIMAL,     -- measure\n    discount DECIMAL    -- measure\n);",
+          "relatedLessons": [
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" },
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" }
+          ]
+        },
+        {
+          "term": "Star Schema",
+          "termEn": "Star Schema",
+          "definition": "Структура dimensional model, где центральная fact-таблица окружена денормализованными dimension-таблицами. Каждая dimension — один JOIN от fact-таблицы (один уровень). Простая для понимания, минимум JOIN-ов, оптимальная для BI-инструментов. Недостаток: денормализация dimensions увеличивает redundancy.",
+          "example": "-- Star Schema: fact в центре, dimensions вокруг\n--\n--              dim_date\n--                 |\n-- dim_product — fact_sales — dim_customer\n--                 |\n--              dim_store\n--\nSELECT\n    d.quarter,\n    p.category,\n    SUM(f.amount) as revenue\nFROM fact_sales f\nJOIN dim_date d ON f.date_key = d.date_key        -- 1 hop\nJOIN dim_product p ON f.product_key = p.product_key -- 1 hop\nGROUP BY d.quarter, p.category;",
+          "relatedLessons": [
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" }
+          ]
+        },
+        {
+          "term": "Snowflake Schema",
+          "termEn": "Snowflake Schema",
+          "definition": "Нормализованный вариант star schema, где dimension-таблицы имеют собственные подтаблицы (multi-level hierarchy). Экономит storage за счёт устранения redundancy, но усложняет запросы дополнительными JOIN-ами. Полезна для больших dimension-ов с глубокой иерархией (география: страна → регион → город).",
+          "example": "-- Snowflake: dimension разбита на под-таблицы\n--\n-- dim_product → dim_subcategory → dim_category\n--\n-- Star: dim_product.category = 'Electronics'\n-- Snowflake: JOIN dim_subcategory → JOIN dim_category\n\nSELECT c.category_name, SUM(f.amount)\nFROM fact_sales f\nJOIN dim_product p ON f.product_key = p.product_key\nJOIN dim_subcategory sc ON p.subcategory_key = sc.subcategory_key\nJOIN dim_category c ON sc.category_key = c.category_key\nGROUP BY c.category_name;",
+          "relatedLessons": [
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" }
+          ]
+        },
+        {
+          "term": "SCD (Slowly Changing Dimension)",
+          "termEn": "Slowly Changing Dimension",
+          "definition": "Техника отслеживания изменений в dimension-таблицах. SCD Type 1: перезапись (теряем историю). SCD Type 2: новая строка с valid_from/valid_to (полная история, но взрыв строк). SCD Type 3: дополнительная колонка previous_value (одно изменение). Type 2 — наиболее распространённый для DWH.",
+          "example": "-- SCD Type 2: история изменений адреса клиента\nCREATE TABLE dim_customer (\n    customer_key INT,          -- surrogate key\n    customer_id VARCHAR(20),   -- natural key\n    name VARCHAR(100),\n    city VARCHAR(50),\n    valid_from DATE,\n    valid_to DATE,             -- '9999-12-31' для текущей\n    is_current BOOLEAN\n);\n\n-- Клиент переехал из Москвы в Питер:\n-- Row 1: city='Москва', valid_from='2023-01-01', valid_to='2024-06-15', is_current=false\n-- Row 2: city='Питер',  valid_from='2024-06-15', valid_to='9999-12-31', is_current=true",
+          "relatedLessons": [
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" },
+            { "title": "CDC Pipeline Design", "slug": "08-cdc-design/01-cdc-pipeline-design" }
+          ]
+        },
+        {
+          "term": "Data Vault",
+          "termEn": "Data Vault",
+          "definition": "Методология моделирования Дэна Линстедта для enterprise DWH. Три типа таблиц: Hub (бизнес-ключи), Link (связи между Hub-ами), Satellite (атрибуты с историей). Оптимизирована для agile-загрузки из множества источников и полного аудита. Сложнее star schema, но лучше масштабируется для enterprise.",
+          "example": "-- Data Vault: Hub + Satellite + Link\n\n-- Hub: бизнес-ключ\nCREATE TABLE hub_customer (\n    hub_customer_hk BINARY(32),  -- hash key\n    customer_bk VARCHAR(20),     -- business key\n    load_dts TIMESTAMP,\n    record_source VARCHAR(50)\n);\n\n-- Satellite: атрибуты с историей\nCREATE TABLE sat_customer_details (\n    hub_customer_hk BINARY(32),\n    load_dts TIMESTAMP,\n    name VARCHAR(100),\n    city VARCHAR(50),\n    hash_diff BINARY(32)  -- detect changes\n);\n\n-- Link: связь customer ↔ order\nCREATE TABLE link_customer_order (\n    link_hk BINARY(32),\n    hub_customer_hk BINARY(32),\n    hub_order_hk BINARY(32),\n    load_dts TIMESTAMP\n);",
+          "relatedLessons": [
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cdc-quality",
+      "name": "CDC и Data Quality",
+      "terms": [
+        {
+          "term": "CDC (Change Data Capture)",
+          "termEn": "Change Data Capture",
+          "definition": "Техника захвата изменений из source-базы данных (INSERT, UPDATE, DELETE) и передачи их downstream. Три подхода: query-based (polling), trigger-based, log-based. Log-based CDC (Debezium) читает WAL/binlog без нагрузки на source. Обеспечивает near-real-time синхронизацию и полную историю изменений.",
+          "example": "# Debezium CDC — Postgres → Kafka\n# connector config (JSON):\n{\n  \"name\": \"pg-source\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",\n    \"database.hostname\": \"postgres\",\n    \"database.dbname\": \"orders_db\",\n    \"table.include.list\": \"public.orders\",\n    \"plugin.name\": \"pgoutput\",\n    \"slot.name\": \"debezium_slot\",\n    \"topic.prefix\": \"cdc\"\n  }\n}\n# Результат: топик cdc.public.orders с before/after payload",
+          "relatedLessons": [
+            { "title": "CDC Pipeline Design", "slug": "08-cdc-design/01-cdc-pipeline-design" }
+          ]
+        },
+        {
+          "term": "Log-based CDC",
+          "termEn": "Log-based CDC",
+          "definition": "Наиболее надёжный метод CDC, читающий transaction log базы данных (WAL в PostgreSQL, binlog в MySQL, redo log в Oracle). Преимущества: zero-impact на source, захват DELETE-ов, сохранение порядка транзакций, low latency. Debezium — стандартный open-source инструмент для log-based CDC в Kafka-экосистеме.",
+          "example": "# PostgreSQL WAL → Debezium → Kafka\n#\n# 1. PostgreSQL пишет в WAL (Write-Ahead Log)\n# 2. Debezium читает WAL через logical replication slot\n# 3. Каждое изменение → Kafka message:\n#    {\n#      \"op\": \"u\",  // c=create, u=update, d=delete\n#      \"before\": {\"id\": 1, \"status\": \"pending\"},\n#      \"after\":  {\"id\": 1, \"status\": \"shipped\"},\n#      \"source\": {\"lsn\": 12345, \"txId\": 678}\n#    }\n# 4. Consumer применяет изменения к target",
+          "relatedLessons": [
+            { "title": "CDC Pipeline Design", "slug": "08-cdc-design/01-cdc-pipeline-design" },
+            { "title": "Архитектура Kafka", "slug": "04-stream-processing/01-kafka-architecture" }
+          ]
+        },
+        {
+          "term": "Data Quality",
+          "termEn": "Data Quality",
+          "definition": "Степень пригодности данных для использования по назначению. Шесть измерений: completeness (полнота), accuracy (точность), consistency (согласованность), timeliness (актуальность), uniqueness (уникальность), validity (валидность). Инструменты: Great Expectations, dbt tests, Soda, Monte Carlo. Data quality gates между слоями Medallion Architecture предотвращают распространение ошибок.",
+          "example": "# Great Expectations — data quality checks\nimport great_expectations as gx\n\ncontext = gx.get_context()\nbatch = context.get_batch('silver_orders')\n\n# Completeness\nbatch.expect_column_values_to_not_be_null('order_id')\n\n# Uniqueness\nbatch.expect_column_values_to_be_unique('order_id')\n\n# Validity\nbatch.expect_column_values_to_be_between(\n    'amount', min_value=0, max_value=1_000_000\n)\n\n# Freshness\nbatch.expect_column_max_to_be_between(\n    'updated_at',\n    min_value=datetime.now() - timedelta(hours=1)\n)",
+          "relatedLessons": [
+            { "title": "Data Quality и Observability", "slug": "09-data-quality/01-data-quality-observability" }
+          ]
+        },
+        {
+          "term": "Data Observability",
+          "termEn": "Data Observability",
+          "definition": "Мониторинг здоровья data pipeline-ов по пяти столпам: freshness (актуальность), volume (объём), schema (структура), distribution (распределение значений), lineage (происхождение). В отличие от data quality (проверка данных), data observability — проактивный мониторинг pipeline-ов с anomaly detection и alerting.",
+          "example": "# 5 столпов Data Observability:\n#\n# 1. Freshness: таблица обновлялась 3ч назад → ALERT\n#    monitor: MAX(updated_at) > NOW() - INTERVAL 1 HOUR\n#\n# 2. Volume: сегодня 50% меньше строк → ALERT\n#    monitor: COUNT(*) within 2σ of 7-day average\n#\n# 3. Schema: колонка удалена → ALERT\n#    monitor: schema diff vs previous version\n#\n# 4. Distribution: NULL% скакнул с 1% до 40% → ALERT\n#    monitor: column_null_pct < threshold\n#\n# 5. Lineage: upstream table broken → trace impact\n#    monitor: dependency graph traversal",
+          "relatedLessons": [
+            { "title": "Data Quality и Observability", "slug": "09-data-quality/01-data-quality-observability" },
+            { "title": "Governance и Lineage", "slug": "11-governance/01-governance-lineage" }
+          ]
+        },
+        {
+          "term": "Data Contract",
+          "termEn": "Data Contract",
+          "definition": "Формальное соглашение между producer-ом и consumer-ом данных, описывающее schema, SLA, quality expectations и ownership. Shift-left подход: quality проблемы обнаруживаются на этапе производства данных, а не потребления. Включает: schema (fields, types), SLA (freshness, completeness), semantics (бизнес-определения), contacts (owner, oncall).",
+          "example": "# data_contract.yaml\nversion: 1.0\nowner: team-payments\n\nschema:\n  type: object\n  properties:\n    order_id:\n      type: string\n      format: uuid\n      description: Unique order identifier\n    amount:\n      type: number\n      minimum: 0\n    status:\n      type: string\n      enum: [pending, paid, refunded]\n\nsla:\n  freshness: 15 minutes\n  completeness: 99.9%\n\nquality:\n  - column: order_id\n    check: unique\n  - column: amount\n    check: not_null",
+          "relatedLessons": [
+            { "title": "Data Quality и Observability", "slug": "09-data-quality/01-data-quality-observability" },
+            { "title": "Governance и Lineage", "slug": "11-governance/01-governance-lineage" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "orchestration-governance",
+      "name": "Orchestration и Governance",
+      "terms": [
+        {
+          "term": "DAG (Directed Acyclic Graph)",
+          "termEn": "DAG",
+          "definition": "В контексте оркестрации — граф зависимостей между задачами pipeline-а. Каждый узел — задача (extract, transform, load), рёбра — зависимости (task B запускается после task A). Acyclic гарантирует отсутствие циклов → детерминированный порядок выполнения. Apache Airflow — наиболее распространённый DAG-оркестратор.",
+          "example": "# Airflow DAG — ежедневный ETL\nfrom airflow import DAG\nfrom airflow.operators.python import PythonOperator\n\nwith DAG('daily_etl', schedule='@daily') as dag:\n    extract = PythonOperator(\n        task_id='extract_from_postgres',\n        python_callable=extract_data\n    )\n    transform = PythonOperator(\n        task_id='transform_with_spark',\n        python_callable=run_spark_job\n    )\n    load = PythonOperator(\n        task_id='load_to_warehouse',\n        python_callable=load_data\n    )\n    quality = PythonOperator(\n        task_id='run_quality_checks',\n        python_callable=check_quality\n    )\n    extract >> transform >> load >> quality",
+          "relatedLessons": [
+            { "title": "Orchestration Design", "slug": "10-orchestration/01-orchestration-design" }
+          ]
+        },
+        {
+          "term": "Orchestration",
+          "termEn": "Orchestration",
+          "definition": "Координация выполнения data pipeline-ов: scheduling, dependency management, retry, alerting. Отвечает на вопрос 'когда и в каком порядке выполнять задачи'. Инструменты: Apache Airflow, Dagster, Prefect, Mage. Ключевые концепции: DAG, backfill, sensor, trigger, SLA monitoring, task dependency.",
+          "example": "# Airflow vs Dagster — подходы к orchestration\n#\n# Airflow: task-centric\n#   DAG = набор задач + зависимости\n#   Scheduler проверяет расписание\n#   Task Instance выполняется Worker-ом\n#\n# Dagster: asset-centric\n#   @asset\n#   def daily_revenue(orders, products):\n#       return orders.join(products).groupBy('date').sum('amount')\n#   \n#   # Dagster автоматически строит DAG из зависимостей\n#   # между assets (не задачами)",
+          "relatedLessons": [
+            { "title": "Orchestration Design", "slug": "10-orchestration/01-orchestration-design" },
+            { "title": "Паттерны Batch Pipeline", "slug": "03-batch-processing/02-batch-pipeline-patterns" }
+          ]
+        },
+        {
+          "term": "Data Lineage",
+          "termEn": "Data Lineage",
+          "definition": "Отслеживание происхождения и трансформаций данных от source до конечного consumer-а. Отвечает на вопросы: откуда пришли данные? какие трансформации применены? кто зависит от этой таблицы? Критично для impact analysis (что сломается при изменении source), debugging (где данные испортились) и compliance (GDPR — где хранятся PII).",
+          "example": "# Data Lineage граф\n#\n# postgres.orders ─┐\n#                   ├─→ bronze.orders ─→ silver.orders ─┐\n# kafka.payments ──┘                                     │\n#                                                         ├─→ gold.daily_revenue\n# postgres.products ─→ bronze.products ─→ silver.products┘\n#\n# Impact analysis: изменение postgres.orders\n# → затронуты: bronze.orders, silver.orders, gold.daily_revenue\n# → 3 downstream dashboards, 2 ML models",
+          "relatedLessons": [
+            { "title": "Governance и Lineage", "slug": "11-governance/01-governance-lineage" },
+            { "title": "Data Quality и Observability", "slug": "09-data-quality/01-data-quality-observability" }
+          ]
+        },
+        {
+          "term": "Data Catalog",
+          "termEn": "Data Catalog",
+          "definition": "Централизованный реестр метаданных организации: таблицы, колонки, описания, владельцы, lineage, quality metrics, usage statistics. Решает проблему data discovery — 'какие данные у нас есть и где'. Инструменты: DataHub, Apache Atlas, Amundsen, Atlan. Интегрируется с DWH, orchestrator и quality tools.",
+          "example": "# DataHub — каталогизация таблицы\n# Автоматически собирает метаданные:\n#\n# Table: gold.daily_revenue\n# Owner: team-analytics\n# Description: Ежедневная выручка по продуктам\n# Schema:\n#   - date: DATE (partition key)\n#   - product_id: STRING\n#   - revenue: DECIMAL\n#   - order_count: INT\n# Lineage: silver.orders + silver.products → gold.daily_revenue\n# Quality: 99.8% freshness SLO met (30-day)\n# Usage: 47 queries/day, 12 unique users\n# Tags: #revenue #finance #daily",
+          "relatedLessons": [
+            { "title": "Governance и Lineage", "slug": "11-governance/01-governance-lineage" }
+          ]
+        },
+        {
+          "term": "Cost Optimization",
+          "termEn": "Cost Optimization",
+          "definition": "Систематическое снижение затрат на data infrastructure без деградации производительности и SLA. Основные рычаги: right-sizing compute (spot/preemptible instances), storage tiering (hot → warm → cold), query optimization (partition pruning, predicate pushdown), data lifecycle management (TTL, archiving). Cloud spend на данные растёт быстрее бизнеса без активного управления.",
+          "example": "# Cost optimization checklist\n#\n# Storage:\n#   ✓ Parquet вместо CSV (10x compression)\n#   ✓ Storage tiering: S3 Standard → Glacier после 90 дней\n#   ✓ Partition pruning: queries read 5% of data\n#\n# Compute:\n#   ✓ Spot instances для batch (70% savings)\n#   ✓ Auto-scaling: 0 instances ночью\n#   ✓ Right-sizing: m5.2xlarge → m5.xlarge\n#\n# Query:\n#   ✓ Materialized views для hot queries\n#   ✓ Predicate pushdown (filter at source)\n#   ✓ CLUSTER BY для DWH tables",
+          "relatedLessons": [
+            { "title": "Cost Optimization", "slug": "14-cost-optimization/01-cost-optimization" },
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ml-realtime",
+      "name": "ML Pipeline и Real-time",
+      "terms": [
+        {
+          "term": "Feature Store",
+          "termEn": "Feature Store",
+          "definition": "Централизованное хранилище и сервис для ML-фичей, обеспечивающее переиспользование, консистентность между training и serving, point-in-time correctness. Решает проблему training-serving skew: одна и та же фича вычисляется одинаково в batch (training) и online (serving). Инструменты: Feast, Tecton, Databricks Feature Store.",
+          "example": "# Feast Feature Store\nfrom feast import FeatureStore\n\nstore = FeatureStore(repo_path='feature_repo/')\n\n# Offline: получение фичей для training\ntraining_df = store.get_historical_features(\n    entity_df=entities,  # user_id + event_timestamp\n    features=[\n        'user_features:total_purchases_30d',\n        'user_features:avg_order_value',\n        'user_features:days_since_last_order'\n    ]\n).to_df()\n\n# Online: получение фичей для serving (p99 < 10ms)\nonline_features = store.get_online_features(\n    features=['user_features:total_purchases_30d'],\n    entity_rows=[{'user_id': 'u123'}]\n).to_dict()",
+          "relatedLessons": [
+            { "title": "Feature Store и ML Pipeline", "slug": "12-feature-store/01-feature-store-ml" }
+          ]
+        },
+        {
+          "term": "Feature Engineering",
+          "termEn": "Feature Engineering",
+          "definition": "Процесс создания информативных признаков (features) из сырых данных для ML-моделей. Включает: агрегации (sum/avg/count за период), temporal features (day_of_week, is_holiday), encoding (one-hot, target), текстовые (TF-IDF, embeddings). Качество фичей определяет потолок модели — garbage in, garbage out.",
+          "example": "# Feature engineering для prediction модели\nimport pyspark.sql.functions as F\n\n# Temporal features\ndf = df.withColumn('hour', F.hour('event_ts'))\ndf = df.withColumn('day_of_week', F.dayofweek('event_ts'))\ndf = df.withColumn('is_weekend', F.col('day_of_week').isin(1, 7))\n\n# Aggregation features (window)\nwindow_30d = Window.partitionBy('user_id') \\\n    .orderBy('event_ts') \\\n    .rangeBetween(-30*86400, 0)\n\ndf = df.withColumn(\n    'purchases_30d',\n    F.count('order_id').over(window_30d)\n)\ndf = df.withColumn(\n    'avg_amount_30d',\n    F.avg('amount').over(window_30d)\n)",
+          "relatedLessons": [
+            { "title": "Feature Store и ML Pipeline", "slug": "12-feature-store/01-feature-store-ml" },
+            { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" }
+          ]
+        },
+        {
+          "term": "Real-time Analytics",
+          "termEn": "Real-time Analytics",
+          "definition": "Аналитические запросы с латентностью от миллисекунд до секунд по данным, поступающим в реальном времени. Отличается от batch analytics (минуты-часы) скоростью, от stream processing — фокусом на ad-hoc SQL-запросы. Требует специализированных OLAP-движков: ClickHouse, Apache Druid, Apache Pinot, StarRocks.",
+          "example": "# ClickHouse — real-time analytics\n# Ingestion: 500K events/sec\n# Query latency: p99 < 100ms\n\nCREATE TABLE events (\n    event_id UUID,\n    user_id UInt64,\n    event_type LowCardinality(String),\n    amount Decimal(10,2),\n    event_time DateTime\n) ENGINE = MergeTree()\nPARTITION BY toYYYYMM(event_time)\nORDER BY (event_type, user_id, event_time);\n\n-- Dashboard query: revenue last 5 minutes\nSELECT\n    toStartOfMinute(event_time) as minute,\n    sum(amount) as revenue\nFROM events\nWHERE event_time > now() - INTERVAL 5 MINUTE\nGROUP BY minute\nORDER BY minute;",
+          "relatedLessons": [
+            { "title": "Real-time Analytics", "slug": "13-realtime-analytics/01-realtime-analytics" }
+          ]
+        },
+        {
+          "term": "Materialized View",
+          "termEn": "Materialized View",
+          "definition": "Предвычисленный результат запроса, хранящийся физически и обновляемый инкрементально. Ускоряет повторяющиеся аналитические запросы за счёт storage. Ключевой tradeoff: write amplification vs read latency. Поддерживается в DWH (Snowflake, Redshift), OLAP-движках (ClickHouse, Druid), и Lakehouse (Databricks).",
+          "example": "-- ClickHouse: Materialized View для real-time агрегатов\nCREATE MATERIALIZED VIEW hourly_revenue\nENGINE = SummingMergeTree()\nORDER BY (hour, product_id)\nAS SELECT\n    toStartOfHour(event_time) as hour,\n    product_id,\n    sum(amount) as total_revenue,\n    count() as order_count\nFROM events\nWHERE event_type = 'purchase'\nGROUP BY hour, product_id;\n\n-- Query: мгновенный ответ вместо scan 1B rows\nSELECT hour, sum(total_revenue)\nFROM hourly_revenue\nWHERE hour >= today()\nGROUP BY hour;",
+          "relatedLessons": [
+            { "title": "Real-time Analytics", "slug": "13-realtime-analytics/01-realtime-analytics" },
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" }
+          ]
+        },
+        {
+          "term": "OLAP Cube",
+          "termEn": "OLAP Cube",
+          "definition": "Многомерная структура данных, предварительно агрегирующая метрики по комбинациям измерений (dimensions). Операции: slice (фиксация одного измерения), dice (фиксация нескольких), roll-up (агрегация вверх по иерархии), drill-down (детализация). Современная реализация: columnar OLAP-движки (ClickHouse, Druid) вместо классических MOLAP кубов.",
+          "example": "# OLAP операции на примере revenue cube\n# Dimensions: date, product, region\n# Measure: revenue\n#\n# Slice: revenue WHERE region = 'Europe'\n# Dice: revenue WHERE region IN ('EU','US') AND year = 2024\n# Roll-up: daily → monthly → yearly\n# Drill-down: yearly → quarterly → monthly\n#\n# Apache Druid — modern OLAP\n# Pre-aggregation at ingestion time\n# Sub-second queries on billions of rows\n# Native support for time-series roll-up",
+          "relatedLessons": [
+            { "title": "Real-time Analytics", "slug": "13-realtime-analytics/01-realtime-analytics" },
+            { "title": "Проектирование Warehouse", "slug": "05-warehouse-design/01-warehouse-design" }
+          ]
+        }
+      ]
+    }
+  ]
+}

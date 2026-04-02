@@ -1,0 +1,452 @@
+{
+  "title": "Решение проблем System Design для Data Engineer",
+  "description": "Частые ошибки проектирования data-платформ — симптомы, причины и пошаговые решения.",
+  "filters": {
+    "primary": {
+      "label": "Область",
+      "field": "area",
+      "options": [
+        { "id": "pipeline", "label": "Pipeline Architecture", "icon": "cube", "color": "blue" },
+        { "id": "storage", "label": "Хранение данных", "icon": "layers", "color": "purple" },
+        { "id": "streaming", "label": "Stream Processing", "icon": "wave", "color": "cyan" },
+        { "id": "modeling", "label": "Data Modeling", "icon": "code", "color": "orange" },
+        { "id": "quality", "label": "Data Quality", "icon": "wrench", "color": "teal" },
+        { "id": "orchestration", "label": "Orchestration", "icon": "gear", "color": "green" },
+        { "id": "governance", "label": "Governance и Cost", "icon": "lightning", "color": "gray" }
+      ]
+    },
+    "secondary": {
+      "label": "Тип ошибки",
+      "field": "category",
+      "options": [
+        { "id": "architecture", "label": "Архитектурные ошибки", "icon": "cube", "color": "amber" },
+        { "id": "scaling", "label": "Ошибки масштабирования", "icon": "rocket", "color": "indigo" },
+        { "id": "data-modeling", "label": "Ошибки моделирования", "icon": "layers", "color": "cyan" },
+        { "id": "operational", "label": "Операционные ошибки", "icon": "gear", "color": "blue" },
+        { "id": "cost", "label": "Перерасход ресурсов", "icon": "alert", "color": "red" }
+      ]
+    }
+  },
+  "entries": [
+    {
+      "errorMessage": "Lambda Architecture при простом use-case",
+      "area": "pipeline",
+      "category": "architecture",
+      "symptoms": [
+        "Дублирование бизнес-логики между batch и speed слоями",
+        "Расхождения результатов между batch-вычислениями и realtime-вычислениями",
+        "Высокие затраты на поддержку двух параллельных pipeline"
+      ],
+      "cause": "Выбор Lambda Architecture по умолчанию без анализа реальных требований к латентности. Если задержка до нескольких минут допустима, Kappa Architecture с единым streaming-pipeline значительно проще в поддержке.",
+      "solution": [
+        "Оцените реальные SLA по латентности: если >1 мин допустимо, Kappa достаточно",
+        "Если Lambda необходима, вынесите общую бизнес-логику в shared-библиотеку",
+        "Используйте serving layer (Druid, ClickHouse) для объединения batch и speed результатов",
+        "Рассмотрите Medallion Architecture как альтернативу с чёткими слоями"
+      ],
+      "relatedLessons": [
+        { "title": "Lambda, Kappa, Medallion", "slug": "02-pipeline-patterns/02-lambda-kappa-medallion" },
+        { "title": "Анализ компромиссов", "slug": "01-sd-fundamentals/03-tradeoff-analysis" }
+      ]
+    },
+    {
+      "errorMessage": "Монолитный ETL-pipeline без изоляции сбоев",
+      "area": "pipeline",
+      "category": "architecture",
+      "symptoms": [
+        "Ошибка в одном источнике данных блокирует весь pipeline",
+        "Невозможно перезапустить обработку отдельного источника без перезапуска всего процесса",
+        "Время восстановления после сбоя измеряется часами"
+      ],
+      "cause": "Все источники данных обрабатываются в одном монолитном процессе без разделения на независимые единицы. Отсутствует fault isolation — сбой любого этапа каскадирует на весь pipeline.",
+      "solution": [
+        "Декомпозируйте pipeline на независимые DAG-задачи по источникам",
+        "Реализуйте idempotent-операции для безопасного перезапуска отдельных этапов",
+        "Добавьте circuit breaker между этапами pipeline",
+        "Используйте оркестратор (Airflow, Dagster) с retry-политиками на уровне задач"
+      ],
+      "relatedLessons": [
+        { "title": "ETL, ELT и Zero-ETL", "slug": "02-pipeline-patterns/01-etl-elt-zero-etl" },
+        { "title": "Orchestration Design", "slug": "10-orchestration/01-orchestration-design" }
+      ]
+    },
+    {
+      "errorMessage": "Прямое чтение аналитики из production OLTP-базы",
+      "area": "pipeline",
+      "category": "architecture",
+      "symptoms": [
+        "Деградация производительности production-приложения во время аналитических запросов",
+        "Блокировки таблиц при длительных SELECT-запросах",
+        "Жалобы пользователей на медленный сервис в часы работы ETL"
+      ],
+      "cause": "Аналитические запросы выполняются напрямую к production базе вместо создания отдельного аналитического хранилища. OLTP-база оптимизирована для транзакций, не для сканирования больших объёмов данных.",
+      "solution": [
+        "Настройте CDC (Debezium, DMS) для репликации данных в аналитическое хранилище",
+        "Создайте read-replica для аналитических запросов как временное решение",
+        "Спроектируйте отдельный OLAP-слой (DWH или Lakehouse) для аналитики",
+        "Определите SLA для свежести данных — часто near-realtime через CDC достаточно"
+      ],
+      "relatedLessons": [
+        { "title": "CDC Pipeline Design", "slug": "08-cdc-design/01-cdc-pipeline-design" },
+        { "title": "Warehouse Design", "slug": "05-warehouse-design/01-warehouse-design" }
+      ]
+    },
+    {
+      "errorMessage": "Тесная связь (tight coupling) между producer и consumer данных",
+      "area": "pipeline",
+      "category": "architecture",
+      "symptoms": [
+        "Изменение схемы в одном сервисе ломает downstream-потребителей",
+        "Невозможно добавить нового consumer без модификации producer",
+        "Каскадные сбои при обновлении одного из компонентов"
+      ],
+      "cause": "Отсутствие промежуточного слоя абстракции между производителями и потребителями данных. Producer напрямую пишет в таблицу consumer или использует point-to-point интеграцию без event bus.",
+      "solution": [
+        "Внедрите event-driven архитектуру с Kafka/Pulsar как промежуточным слоем",
+        "Определите data contracts (schema registry) между producer и consumer",
+        "Используйте schema evolution (Avro, Protobuf) для backward-compatible изменений",
+        "Реализуйте паттерн Reverse ETL для обратной доставки данных в сервисы"
+      ],
+      "relatedLessons": [
+        { "title": "Reverse ETL и Event-Driven", "slug": "02-pipeline-patterns/03-reverse-etl-event-driven" },
+        { "title": "Kafka Architecture", "slug": "04-stream-processing/01-kafka-architecture" }
+      ]
+    },
+    {
+      "errorMessage": "Full-reload таблиц вместо инкрементальной загрузки",
+      "area": "pipeline",
+      "category": "cost",
+      "symptoms": [
+        "Время выполнения pipeline растёт линейно с ростом данных",
+        "Высокие затраты на compute — каждый запуск перечитывает весь объём",
+        "Окно обработки (batch window) приближается к интервалу запуска"
+      ],
+      "cause": "Все данные перечитываются и перезаписываются при каждом запуске ETL, потому что не реализован механизм отслеживания изменений (watermark, CDC timestamp, audit columns).",
+      "solution": [
+        "Реализуйте incremental load по колонке updated_at или CDC timestamp",
+        "Используйте MERGE (upsert) вместо полной перезаписи таблицы",
+        "Настройте partitioning по дате для обработки только новых партиций",
+        "Рассмотрите CDC как источник инкрементальных изменений"
+      ],
+      "relatedLessons": [
+        { "title": "Batch Pipeline Patterns", "slug": "03-batch-processing/02-batch-pipeline-patterns" },
+        { "title": "Cost Optimization", "slug": "14-cost-optimization/01-cost-optimization" }
+      ]
+    },
+    {
+      "errorMessage": "Overpartitioning в Data Lake — тысячи мелких файлов",
+      "area": "storage",
+      "category": "scaling",
+      "symptoms": [
+        "Запросы к таблице выполняются медленнее, чем к неразбитой версии",
+        "File listing операции занимают минуты в S3/GCS/ADLS",
+        "Spark/Trino показывают Planning Time > Execution Time"
+      ],
+      "cause": "Избыточное партиционирование по колонкам с высокой кардинальностью (user_id, timestamp) создаёт тысячи директорий с файлами в несколько килобайт. Overhead метаданных превышает выигрыш от partition pruning.",
+      "solution": [
+        "Партиционируйте только по колонкам с низкой кардинальностью (дата, регион)",
+        "Целевой размер файла: 128 MB – 1 GB для Parquet/ORC",
+        "Используйте compaction (Iceberg, Delta Lake) для объединения мелких файлов",
+        "Замените партиционирование на Z-order/Hilbert clustering для multi-dimensional фильтрации"
+      ],
+      "relatedLessons": [
+        { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" },
+        { "title": "Spark Architecture", "slug": "03-batch-processing/01-spark-architecture" }
+      ]
+    },
+    {
+      "errorMessage": "Единый формат хранения для всех слоёв Data Lake",
+      "area": "storage",
+      "category": "architecture",
+      "symptoms": [
+        "Bronze-слой хранит данные в Parquet, теряя оригинальный формат при сбоях",
+        "BI-инструменты медленно читают данные из Raw-зоны",
+        "Невозможно воспроизвести трансформацию из-за потери исходных данных"
+      ],
+      "cause": "Все слои Data Lake (Raw, Curated, Serving) используют одинаковый формат без учёта требований каждого слоя. Raw-данные должны сохранять оригинальный формат для аудита, а serving-слой — оптимизированный для чтения.",
+      "solution": [
+        "Bronze/Raw: сохраняйте оригинальный формат (JSON, CSV, Avro) as-is",
+        "Silver/Curated: конвертируйте в колоночный формат (Parquet, ORC) с компрессией",
+        "Gold/Serving: используйте materialized views или агрегированные таблицы",
+        "Внедрите table format (Iceberg, Delta) для ACID-транзакций и time travel"
+      ],
+      "relatedLessons": [
+        { "title": "Lakehouse Architecture", "slug": "06-lakehouse/01-lakehouse-architecture" },
+        { "title": "ETL, ELT и Zero-ETL", "slug": "02-pipeline-patterns/01-etl-elt-zero-etl" }
+      ]
+    },
+    {
+      "errorMessage": "Игнорирование late data в stream processing",
+      "area": "streaming",
+      "category": "architecture",
+      "symptoms": [
+        "Агрегаты в realtime-дашбордах занижают реальные значения",
+        "Данные от мобильных устройств теряются при восстановлении связи",
+        "Расхождения между streaming-результатами и batch-пересчётом"
+      ],
+      "cause": "Streaming-pipeline использует processing time вместо event time и не настроены watermarks. Данные, поступившие с задержкой (out-of-order events), отбрасываются или попадают в неправильное окно.",
+      "solution": [
+        "Переключитесь на event time processing с watermarks",
+        "Настройте allowed lateness для допуска опоздавших событий",
+        "Реализуйте side output (dead letter) для событий за пределами watermark",
+        "Используйте session windows вместо fixed windows для нерегулярного трафика"
+      ],
+      "relatedLessons": [
+        { "title": "Flink Watermarks & Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" },
+        { "title": "Realtime Analytics", "slug": "13-realtime-analytics/01-realtime-analytics" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие Dead Letter Queue в streaming pipeline",
+      "area": "streaming",
+      "category": "operational",
+      "symptoms": [
+        "Pipeline останавливается при получении невалидного сообщения",
+        "Poison pill — одно сообщение блокирует обработку всей партиции",
+        "Потеря данных при skip невалидных записей без логирования"
+      ],
+      "cause": "Streaming consumer не обрабатывает ошибки десериализации и бизнес-валидации. Сбой на одном сообщении вызывает бесконечный retry или молчаливый skip без сохранения проблемного сообщения.",
+      "solution": [
+        "Реализуйте Dead Letter Queue (DLQ) — отдельный topic для ошибочных сообщений",
+        "Добавьте metadata к DLQ-записям: original topic, partition, offset, error reason",
+        "Настройте alerting при росте DLQ выше порога",
+        "Создайте инструмент для replay обработанных DLQ-сообщений после исправления"
+      ],
+      "relatedLessons": [
+        { "title": "Kafka Architecture", "slug": "04-stream-processing/01-kafka-architecture" },
+        { "title": "Data Quality & Observability", "slug": "09-data-quality/01-data-quality-observability" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие backpressure в streaming pipeline",
+      "area": "streaming",
+      "category": "scaling",
+      "symptoms": [
+        "Consumer lag растёт неограниченно при всплесках нагрузки",
+        "OOM на consumer при накоплении буфера необработанных сообщений",
+        "Каскадный отказ downstream-сервисов при burst-записи"
+      ],
+      "cause": "Pipeline не ограничивает скорость потребления при превышении пропускной способности обработки. Отсутствуют механизмы противодавления между источником и обработчиком.",
+      "solution": [
+        "Настройте max.poll.records и fetch.max.bytes в Kafka consumer",
+        "Используйте встроенный backpressure Flink (credit-based flow control)",
+        "Реализуйте rate limiting на уровне sink-коннектора",
+        "Мониторьте consumer lag как ключевую метрику здоровья pipeline"
+      ],
+      "relatedLessons": [
+        { "title": "Flink Watermarks & Windows", "slug": "04-stream-processing/02-flink-watermarks-windows" },
+        { "title": "Kafka Architecture", "slug": "04-stream-processing/01-kafka-architecture" }
+      ]
+    },
+    {
+      "errorMessage": "Star Schema для высокочастотных обновлений",
+      "area": "modeling",
+      "category": "data-modeling",
+      "symptoms": [
+        "Медленные MERGE/UPDATE операции в fact-таблице",
+        "Lock contention при параллельных обновлениях dimension-таблиц",
+        "Рост latency аналитических запросов из-за частых перестроений индексов"
+      ],
+      "cause": "Классическая Star Schema оптимизирована для append-only загрузки и read-heavy аналитики. При частых обновлениях (>10K/мин) MERGE-операции на больших fact-таблицах становятся узким местом.",
+      "solution": [
+        "Используйте SCD Type 2 для dimension-таблиц вместо UPDATE",
+        "Рассмотрите append-only модель с версионированием записей",
+        "Для near-realtime: используйте materialized views поверх streaming-слоя",
+        "Оцените Data Vault как альтернативу для часто меняющихся источников"
+      ],
+      "relatedLessons": [
+        { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" },
+        { "title": "Warehouse Design", "slug": "05-warehouse-design/01-warehouse-design" }
+      ]
+    },
+    {
+      "errorMessage": "Один большой data model без слоёв (staging, marts)",
+      "area": "modeling",
+      "category": "data-modeling",
+      "symptoms": [
+        "Бизнес-логика размазана по десяткам SQL-запросов без единого источника правды",
+        "Дублирование трансформаций в разных отчётах с разными результатами",
+        "Невозможно отследить происхождение (lineage) метрики"
+      ],
+      "cause": "Отсутствие архитектуры слоёв данных. Все трансформации выполняются в одном шаге — от raw-данных до финальных отчётов. Нет промежуточных staging-таблиц и переиспользуемых data marts.",
+      "solution": [
+        "Внедрите Medallion (Bronze → Silver → Gold) или Staging → Marts архитектуру",
+        "Определите single source of truth для каждой бизнес-метрики в marts-слое",
+        "Используйте dbt или аналог для управления зависимостями между моделями",
+        "Документируйте data lineage на уровне каждой таблицы"
+      ],
+      "relatedLessons": [
+        { "title": "Data Modeling", "slug": "07-data-modeling/01-data-modeling" },
+        { "title": "Governance & Lineage", "slug": "11-governance/01-governance-lineage" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие schema evolution strategy",
+      "area": "modeling",
+      "category": "data-modeling",
+      "symptoms": [
+        "Добавление нового поля в источнике ломает downstream-pipeline",
+        "Потребители данных не могут читать старые партиции после изменения схемы",
+        "Ручная миграция данных при каждом изменении формата"
+      ],
+      "cause": "Не определена стратегия развития схемы данных. Изменения схемы (добавление, удаление, переименование полей) не управляются централизованно и не поддерживают backward/forward compatibility.",
+      "solution": [
+        "Используйте schema registry (Confluent, AWS Glue) для версионирования схем",
+        "Определите compatibility mode: BACKWARD для consumer, FORWARD для producer",
+        "Выберите формат с встроенной schema evolution: Avro, Protobuf (не JSON, CSV)",
+        "Внедрите data contracts с автоматической валидацией при CI/CD"
+      ],
+      "relatedLessons": [
+        { "title": "CDC Pipeline Design", "slug": "08-cdc-design/01-cdc-pipeline-design" },
+        { "title": "Data Quality & Observability", "slug": "09-data-quality/01-data-quality-observability" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие data contract между producer и consumer",
+      "area": "quality",
+      "category": "operational",
+      "symptoms": [
+        "Тихие сбои — pipeline работает, но выдаёт некорректные данные",
+        "Обнаружение проблемы через дни или недели после изменения в источнике",
+        "Нет ответственного за качество данных между командами"
+      ],
+      "cause": "Между командой-производителем данных и командой-потребителем нет формального соглашения о схеме, SLA по свежести и полноте данных. Изменения в upstream-системе никому не сообщаются.",
+      "solution": [
+        "Определите data contract: schema, SLA (freshness, completeness), ownership",
+        "Автоматизируйте валидацию контрактов в CI/CD pipeline",
+        "Настройте alerting при нарушении контракта (schema drift, SLA breach)",
+        "Внедрите инструмент управления контрактами (Soda, Great Expectations, Monte Carlo)"
+      ],
+      "relatedLessons": [
+        { "title": "Data Quality & Observability", "slug": "09-data-quality/01-data-quality-observability" },
+        { "title": "Governance & Lineage", "slug": "11-governance/01-governance-lineage" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие мониторинга data quality между слоями",
+      "area": "quality",
+      "category": "operational",
+      "symptoms": [
+        "Аналитики обнаруживают аномалии в отчётах раньше, чем data-инженеры",
+        "NULL-значения и дубликаты проникают в serving-слой незамеченными",
+        "Невозможно определить, на каком этапе pipeline данные повредились"
+      ],
+      "cause": "Data quality проверки отсутствуют или выполняются только на финальном этапе. Между слоями (Raw → Curated → Serving) нет point-of-check валидации — ошибки обнаруживаются слишком поздно.",
+      "solution": [
+        "Добавьте DQ-проверки на границе каждого слоя (freshness, completeness, uniqueness)",
+        "Используйте profiling для установки baseline-метрик и detection anomalий",
+        "Настройте circuit breaker: блокируйте загрузку в serving-слой при DQ-failure",
+        "Реализуйте data observability dashboard с историей DQ-метрик"
+      ],
+      "relatedLessons": [
+        { "title": "Data Quality & Observability", "slug": "09-data-quality/01-data-quality-observability" },
+        { "title": "Requirements Gathering", "slug": "01-sd-fundamentals/02-requirements-gathering" }
+      ]
+    },
+    {
+      "errorMessage": "Single-node оркестратор для распределённых задач",
+      "area": "orchestration",
+      "category": "scaling",
+      "symptoms": [
+        "Scheduler не справляется с количеством DAG и задач",
+        "Задачи ожидают в очереди часами из-за ограниченных worker-слотов",
+        "Единая точка отказа — потеря scheduler блокирует все pipeline"
+      ],
+      "cause": "Оркестратор (Airflow, Prefect) развёрнут на одном сервере без горизонтального масштабирования. При росте количества DAG и задач single-node становится bottleneck.",
+      "solution": [
+        "Переведите Airflow на CeleryExecutor или KubernetesExecutor для горизонтального масштабирования",
+        "Настройте HA для scheduler: Airflow 2.x поддерживает multiple schedulers",
+        "Разделите DAG по доменам между несколькими Airflow-инстансами",
+        "Рассмотрите serverless-оркестраторы (Dagster Cloud, Prefect Cloud) для автомасштабирования"
+      ],
+      "relatedLessons": [
+        { "title": "Orchestration Design", "slug": "10-orchestration/01-orchestration-design" },
+        { "title": "Распределённые системы", "slug": "01-sd-fundamentals/04-distributed-systems" }
+      ]
+    },
+    {
+      "errorMessage": "DAG-зависимости через shared filesystem вместо data-aware triggers",
+      "area": "orchestration",
+      "category": "operational",
+      "symptoms": [
+        "Downstream DAG запускается до завершения записи данных upstream",
+        "Race condition при параллельных записях в одну директорию",
+        "Пропуск запуска при несовпадении расписаний upstream и downstream"
+      ],
+      "cause": "Зависимости между DAG реализованы через cron-расписание или проверку наличия файла, а не через событийную модель. Upstream и downstream DAG не знают друг о друге и полагаются на timing.",
+      "solution": [
+        "Используйте data-aware scheduling: Airflow Datasets, Dagster assets",
+        "Реализуйте event-driven триггеры: S3 event → Lambda → DAG trigger",
+        "Добавьте sensor с таймаутом как fallback для проверки готовности данных",
+        "Определите _SUCCESS маркеры (файлы-флаги) как явный сигнал завершения записи"
+      ],
+      "relatedLessons": [
+        { "title": "Orchestration Design", "slug": "10-orchestration/01-orchestration-design" },
+        { "title": "Batch Pipeline Patterns", "slug": "03-batch-processing/02-batch-pipeline-patterns" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие data lineage и каталога метаданных",
+      "area": "governance",
+      "category": "operational",
+      "symptoms": [
+        "Невозможно определить impact analysis при изменении таблицы-источника",
+        "Дублирование таблиц — команды создают свои копии, не зная о существующих",
+        "Аудит и compliance невозможны — нет информации о происхождении данных"
+      ],
+      "cause": "Метаданные и происхождение данных (lineage) не отслеживаются централизованно. Каждая команда работает изолированно, не имея общего каталога доступных данных и их зависимостей.",
+      "solution": [
+        "Внедрите data catalog (DataHub, OpenMetadata, Amundsen) для регистрации всех datasets",
+        "Настройте автоматический сбор lineage из Spark, Airflow, dbt",
+        "Определите data stewards — ответственных за каждый dataset",
+        "Реализуйте impact analysis перед любым изменением схемы"
+      ],
+      "relatedLessons": [
+        { "title": "Governance & Lineage", "slug": "11-governance/01-governance-lineage" },
+        { "title": "Capstone: Data Platform", "slug": "15-capstone/01-capstone-data-platform" }
+      ]
+    },
+    {
+      "errorMessage": "Ручное управление cost без автоматизации и бюджетов",
+      "area": "governance",
+      "category": "cost",
+      "symptoms": [
+        "Неожиданный рост облачного счёта на 200-500%",
+        "Забытые dev/staging кластеры работают 24/7",
+        "Нет visibility — невозможно определить, какой pipeline потребляет больше всего ресурсов"
+      ],
+      "cause": "Отсутствие автоматизации cost management: нет бюджетов, алертов, auto-shutdown для non-production ресурсов. Стоимость инфраструктуры не привязана к конкретным pipeline и командам.",
+      "solution": [
+        "Настройте cloud budget alerts на 50%, 80%, 100% от лимита",
+        "Реализуйте tagging strategy: каждый ресурс привязан к команде и pipeline",
+        "Автоматизируйте shutdown dev/staging кластеров в нерабочее время",
+        "Внедрите FinOps-отчёт: cost per pipeline run как метрику эффективности"
+      ],
+      "relatedLessons": [
+        { "title": "Cost Optimization", "slug": "14-cost-optimization/01-cost-optimization" },
+        { "title": "Governance & Lineage", "slug": "11-governance/01-governance-lineage" }
+      ]
+    },
+    {
+      "errorMessage": "Feature Store как отдельный silo без интеграции с Data Platform",
+      "area": "governance",
+      "category": "architecture",
+      "symptoms": [
+        "ML-команда дублирует ETL-pipeline для подготовки features",
+        "Training-serving skew — features вычисляются по-разному в train и inference",
+        "Невозможно переиспользовать features между разными ML-моделями"
+      ],
+      "cause": "Feature Store развёрнут изолированно от основной data-платформы. ML-инженеры строят собственные pipeline вместо использования curated-данных из DWH/Lakehouse.",
+      "solution": [
+        "Интегрируйте Feature Store с существующим data lake/warehouse как source of truth",
+        "Используйте единый compute (Spark, Flink) для batch и online features",
+        "Реализуйте feature registry с lineage до исходных таблиц",
+        "Стандартизируйте feature computation: одна кодовая база для train и serve"
+      ],
+      "relatedLessons": [
+        { "title": "Feature Store для ML", "slug": "12-feature-store/01-feature-store-ml" },
+        { "title": "SD Framework", "slug": "01-sd-fundamentals/05-sd-framework" }
+      ]
+    }
+  ]
+}
