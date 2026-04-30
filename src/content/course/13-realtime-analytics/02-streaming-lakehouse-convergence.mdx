@@ -1,0 +1,411 @@
+---
+title: "Streaming-Lakehouse Convergence"
+description: "Kafka log → Iceberg/Paimon table, Tableflow, Apache Paimon, Hudi 1.0, real-time OLAP shift, decision matrix"
+order: 2
+difficulty: "advanced"
+estimatedTime: 25
+topics: ["Streaming Lakehouse", "Iceberg", "Paimon", "Hudi", "Tableflow", "Stream-Table Duality", "Real-time OLAP"]
+---
+
+# Streaming-Lakehouse Convergence
+
+## Главный тренд 2025-2026
+
+Десятилетие data engineering знало две раздельные дисциплины: streaming (Kafka, Flink, низкая latency, event log) и batch lakehouse (Iceberg, Spark, дешёвое хранилище, аналитика). В 2025 году эти миры схлопываются. Kafka topic и Iceberg table становятся одним и тем же объектом в S3.
+
+```
+Эволюция архитектур:
+
+  2010-2020 — Lambda:
+    Streaming layer (Kafka + Storm/Flink) для скорости
+    Batch layer (HDFS + MapReduce/Spark) для точности
+    Дублирование кода и данных. Сложность 10x.
+
+  2020-2024 — Kappa + Lakehouse раздельно:
+    Streaming: Kafka → Flink → ClickHouse/Pinot
+    Batch: Spark → Iceberg/Delta
+    Два пайплайна, два склада. ETL между ними.
+
+  2025-2026 — Streaming Lakehouse (convergence):
+    Kafka topic = Iceberg table (один объект в S3)
+    Один pipeline для streaming и batch
+    Один storage layer
+    Один query engine (или federation)
+```
+
+<DiagramContainer title="Lambda → Kappa → Streaming Lakehouse" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Lambda: два параллельных pipeline. Дублирование данных и кода.">
+      <DataBox label="Lambda (legacy)" className="border-yellow-500/30">
+        <div className="text-xs space-y-1">
+          <div>Stream: Kafka → Flink → Cassandra</div>
+          <div>Batch: HDFS → Spark → Hive</div>
+          <div className="text-yellow-400">2x complexity, drift</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Kappa: streaming-only, batch как special case. Лучше, но lakehouse отдельно.">
+      <DataBox label="Kappa (2020-2024)" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Kafka → Flink → OLAP (CH/Pinot)</div>
+          <div>+ отдельный Iceberg ingest</div>
+          <div className="text-blue-400">Streaming primary, lakehouse copy</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Convergence: один storage layer. Stream и table — две views на одни байты.">
+      <DataBox label="Streaming Lakehouse (2025+)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Kafka log + Iceberg table = same bytes</div>
+          <div>Stream and table duality</div>
+          <div className="text-emerald-400">One storage, two views</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Stream-Table duality
+
+Концепция родом из Kafka Streams (2017): любой topic можно интерпретировать как stream of changes или как table state. В streaming lakehouse идея переходит на физический уровень — те же байты в S3 материализуют и log, и table.
+
+```
+Концепция:
+  Stream view:    INSERT events ordered by time
+  Table view:     latest state per key (или time-versioned)
+
+  Old approach:
+    Events в Kafka (binary log format)
+    + ETL (Connect/Flink)
+    + Iceberg table (Parquet с метаданными)
+    → две физические копии данных
+
+  New approach (Tableflow, Iceberg Topics, Ursa):
+    Один write путь:
+      Producer → row-based WAL (S3) → background compaction → Parquet → Iceberg metadata
+    Два read пути:
+      Kafka consumer protocol (читает WAL + recent Parquet)
+      Iceberg query (Spark/Trino/StarRocks читают Parquet)
+
+  Result: zero copy, zero ETL, single source of truth
+```
+
+## Apache Paimon: Flink-native LSM lakehouse
+
+Paimon (graduated from incubator в 2024) — первый lake format, изначально спроектированный под streaming updates. Под капотом LSM-tree (как RocksDB), но SST-файлы это Parquet, а не custom binary.
+
+```
+Paimon архитектура:
+  - LSM-tree поверх Parquet/ORC файлов
+  - Primary key tables с CRUD (INSERT, UPDATE, DELETE, MERGE)
+  - Changelog production: каждое изменение видно как INSERT/UPDATE/DELETE event
+  - Streaming reads: continuous tail чтение с offset
+  - Native integration с Flink (sink + source)
+  - Multi-engine reads: Spark, Trino, StarRocks, Doris, Hive
+
+LSM поверх Parquet — почему это важно:
+  - Iceberg/Delta: append-only friendly, upsert через MERGE INTO (дорого)
+  - Paimon: upsert — primary use case, oптимизирован для CDC и streaming
+  - Compaction merges old levels периодически (как RocksDB)
+  - Snapshot isolation через manifests (как Iceberg)
+
+Use case sweet spot:
+  CDC из MySQL → Paimon table (Flink CDC connector)
+  Streaming aggregations с обновлениями (counts, sums, latest state)
+  Multi-engine reads без копирования
+```
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="08-lsm-tree-engines/01-lsm-tree-fundamentals"
+  label="LSM-tree fundamentals"
+  preview="Memtable, SST, compaction, levels — основа и RocksDB, и ForSt, и Paimon. Понимание LSM объясняет, почему upsert в Paimon дешевле, чем MERGE INTO в Iceberg."
+/>
+
+## Iceberg streaming write V3
+
+Iceberg V3 spec (финализирован в 2025) добавляет first-class streaming primitives, которых не хватало для convergence:
+
+```
+Iceberg V3 streaming features:
+  - Variant type для semi-structured data (JSON без schema)
+  - Row-level deletion vectors (instead of position deletes)
+  - Geometry type
+  - Default values для schema evolution
+  - Improved equality deletes для upsert
+
+Flink Dynamic Iceberg Sink (2025):
+  - Schema evolution на лету (новые колонки автоматически)
+  - Automatic table creation на основе stream schema
+  - Multi-table sink: один Flink job → много Iceberg tables (по routing key)
+  - Exactly-once через 2PC commit с Iceberg snapshots
+
+Throughput:
+  - 100K-1M events/sec в Iceberg table через Flink sink
+  - Commit interval 30 sec - 5 min (trade-off latency vs file count)
+  - Background compaction чистит мелкие файлы
+```
+
+## Tableflow: Kafka↔Iceberg duality
+
+Confluent Tableflow (GA на Current Bengaluru '25) — managed сервис, который превращает Kafka topic в Iceberg table без отдельного pipeline.
+
+```
+Tableflow архитектура:
+  Producer → Kafka topic → tiered storage (S3) →
+    background materialization → Iceberg table (тот же S3)
+
+  Schema из Schema Registry автоматически конвертируется в Iceberg schema
+  Compaction и snapshot expiration автоматические
+  Поддержка Iceberg + Delta Lake
+
+Что получаешь:
+  - Producer пишет в Kafka API (familiar)
+  - Analytics читает Iceberg (через Snowflake/Spark/Trino)
+  - Flink читает stream view с low latency
+  - Один storage, нет ETL
+
+Roadmap 2026:
+  - Upsert support (Kafka tombstones → Iceberg deletes)
+  - DLQ integration
+  - Bidirectional flow (Iceberg → Kafka)
+  - Azure и GCP versions
+
+Аналоги:
+  - Redpanda Iceberg Topics (2025): встроено в брокер
+  - StreamNative Ursa (VLDB 2025 best industry paper): первый
+    lakehouse-native streaming engine, Kafka API + Iceberg storage
+  - AutoMQ: Kafka-compatible с object storage backend, Iceberg integration
+```
+
+<DiagramContainer title="Tableflow / Iceberg Topics: один storage layer" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Producers пишут через Kafka API">
+        <FlowNode variant="input">Producers</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Один S3 bucket: row-based WAL (live stream) + Parquet (table). Background compaction конвертирует одно в другое.">
+      <DataBox label="S3 (single storage layer)" className="border-emerald-500/30 w-72 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>WAL segments (Kafka binary)</div>
+          <div>↓ background compaction</div>
+          <div>Parquet files + Iceberg metadata</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <FlowRow className="gap-6 justify-center">
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Kafka consumers читают WAL + recent Parquet">
+          <FlowNode variant="output">Kafka consumers (Flink)</FlowNode>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Аналитические engines читают Iceberg metadata + Parquet">
+          <FlowNode variant="output">Iceberg readers (Trino, Spark, Snowflake)</FlowNode>
+        </Tooltip>
+      </div>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Apache Hudi 1.0 streaming
+
+Hudi 1.0 GA (январь 2025) — major релиз с фокусом на streaming-first lakehouse.
+
+```
+Hudi 1.0 streaming features:
+  - LSM-tree timeline для long-term retention (миллиарды commits)
+  - Non-blocking concurrency control (NBCC):
+    Multiple streaming jobs пишут в одну таблицу без блокировок
+  - Partial column updates (для CDC: меняется одна колонка → пишем одну колонку)
+  - Functional indexes (первый из big-3 ACID форматов с этим)
+  - DeltaStreamer: continuous Kafka → Hudi pipeline из коробки
+
+Hudi 1.1 (ноябрь 2025):
+  - Engine-specific optimizations (Spark/Flink/Trino)
+  - Improved index management
+  - Better schema evolution
+
+Когда Hudi:
+  - Upsert-heavy workloads (CDC из OLTP)
+  - Очень частые commits (десятки в секунду)
+  - Time-travel и incremental query как critical features
+  - Уже в экосистеме Hudi (миграция дорогая)
+```
+
+## Real-time OLAP shift: lakehouse-native
+
+Отдельная revolution — OLAP engines (ClickHouse, StarRocks, Pinot, Druid) учатся читать lakehouse напрямую, без копирования.
+
+```
+Раньше (2020-2024):
+  Lakehouse (Iceberg) → ETL → ClickHouse/Pinot local storage → query
+  Дублирование данных. Drift между копиями.
+
+Сейчас (2025):
+  Lakehouse (Iceberg) ← query напрямую ← ClickHouse/StarRocks/Pinot
+  Single source of truth. OLAP engine — compute layer, не storage.
+
+Конкретные примеры:
+  - StarRocks 4.0: first-class Iceberg support, optimized metadata parsing,
+    fast joins на Iceberg tables (Coinbase, Pinterest case studies)
+  - ClickHouse: Iceberg/Delta/Hudi external table support, query federation
+  - Pinot/StarTree: первый OLAP с low-latency индексами над Parquet в S3
+  - Apache Doris: Iceberg/Hudi integration с predicate pushdown
+
+Trade-off:
+  - Local SSD (классический OLAP): 10-50ms p99
+  - Lakehouse-native: 100-500ms p99 (S3 latency)
+  - Compromise: cache горячих partitions локально, cold с S3
+```
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="07-data-modeling/02-time-series-modeling"
+  label="ClickHouse time-series modeling"
+  preview="ORDER BY, TTL, AggregatingMergeTree — паттерны для real-time OLAP. Вопрос остаётся: local storage или Iceberg external."
+/>
+
+## Decision matrix: какой format когда
+
+<DiagramContainer title="Streaming Lakehouse: Iceberg vs Paimon vs Hudi vs Delta" className="my-6">
+  <Grid columns={5} className="p-4 gap-2">
+    <DataBox label="Критерий" className="font-semibold">Критерий</DataBox>
+    <DataBox label="Iceberg" className="border-emerald-500/30 font-semibold">Iceberg</DataBox>
+    <DataBox label="Paimon" className="border-purple-500/30 font-semibold">Paimon</DataBox>
+    <DataBox label="Hudi" className="border-orange-500/30 font-semibold">Hudi</DataBox>
+    <DataBox label="Delta" className="border-blue-500/30 font-semibold">Delta</DataBox>
+
+    <DataBox>Append-only streaming</DataBox>
+    <DataBox>Лучший</DataBox>
+    <DataBox>Хорошо</DataBox>
+    <DataBox>Хорошо</DataBox>
+    <DataBox>Хорошо</DataBox>
+
+    <DataBox>Upsert / CDC</DataBox>
+    <DataBox>OK (V3 deletes)</DataBox>
+    <DataBox>Лучший (LSM)</DataBox>
+    <DataBox>Лучший (origin)</DataBox>
+    <DataBox>OK (MERGE)</DataBox>
+
+    <DataBox>Multi-engine read</DataBox>
+    <DataBox>Лучший (стандарт)</DataBox>
+    <DataBox>Хорошо</DataBox>
+    <DataBox>OK</DataBox>
+    <DataBox>Хорошо (UniForm)</DataBox>
+
+    <DataBox>Streaming write throughput</DataBox>
+    <DataBox>Хорошо (Flink sink)</DataBox>
+    <DataBox>Лучший (Flink-native)</DataBox>
+    <DataBox>Хорошо (DeltaStreamer)</DataBox>
+    <DataBox>OK</DataBox>
+
+    <DataBox>Vendor lock-in</DataBox>
+    <DataBox>Минимальный</DataBox>
+    <DataBox>Минимальный</DataBox>
+    <DataBox>Минимальный</DataBox>
+    <DataBox>Databricks tilt</DataBox>
+
+    <DataBox>Sweet spot</DataBox>
+    <DataBox>General lakehouse, multi-engine</DataBox>
+    <DataBox>Streaming-first, CDC, Flink stack</DataBox>
+    <DataBox>Upsert-heavy, time-travel</DataBox>
+    <DataBox>Databricks ecosystem</DataBox>
+  </Grid>
+</DiagramContainer>
+
+```
+Decision flowchart:
+  → У вас primarily Flink streaming с CDC?
+      → Paimon (LSM-native, Flink-first)
+  → У вас multi-engine аналитика (Spark + Trino + Snowflake)?
+      → Iceberg (стандарт индустрии)
+  → У вас Databricks как primary platform?
+      → Delta + UniForm (читается как Iceberg)
+  → У вас upsert-heavy CDC из OLTP?
+      → Hudi или Paimon
+  → У вас существующий Hudi stack?
+      → Hudi 1.0/1.1 (миграция дорогая)
+```
+
+## Cost vs latency trade-off
+
+Convergence не бесплатна. Streaming в lakehouse приходит с compromises:
+
+```
+Latency spectrum:
+
+  Pure Kafka (in-broker):       1-10 ms        $$$ (broker disks)
+  Kafka tiered storage:         1-100 ms       $$ (warm S3, hot local)
+  Tableflow / Iceberg Topics:   1-30 sec       $ (S3 only, compaction lag)
+  Iceberg streaming write:      30 sec - 5 min $ (Flink commit interval)
+  Pure Iceberg batch:           hours          $ (cheapest)
+
+  ClickHouse local:             10-100 ms      $$$ (SSD)
+  ClickHouse + Iceberg:         100-500 ms     $$ (S3 + cache)
+  Pure Iceberg + Trino:         1-30 sec       $ (no cache)
+
+Cost driver:
+  Streaming latency требует hot tier (memory, SSD)
+  Lakehouse latency дёшев (object storage)
+  Convergence пытается дать обе характеристики через tiering
+```
+
+<Callout type="tip">
+**Где compromise приемлем.** Большинство analytics запросов толерантны к 30-секундной latency: BI dashboards, daily/hourly reports, ad-hoc analytics. Real-time на низком уровне нужен только для: feature serving (ML inference), fraud detection (sub-second), operational monitoring (sub-minute), live dashboards (custom). Для остального convergence через Iceberg/Paimon побеждает по стоимости.
+</Callout>
+
+<Callout type="warning">
+**Anti-pattern: streaming lakehouse как замена Kafka.** Если ваш use case требует sub-second consumer latency (feature serving, OLTP-like), classic Kafka ещё впереди. Tableflow и аналоги — для analytical consumers, не для request-path. Используйте обе: Kafka для hot path, lakehouse view для analytics.
+</Callout>
+
+## Production stack reference (2025-2026)
+
+```
+Modern streaming lakehouse stack:
+
+  Ingest:
+    - Producers → Kafka API (Confluent Cloud / Redpanda / AutoMQ)
+    - Schema Registry (Confluent / Apicurio)
+    - Tableflow / Iceberg Topics для materialization
+
+  Streaming compute:
+    - Flink 2.0 (disaggregated state, ForSt)
+    - Spark Structured Streaming (transformWithState)
+    - State в S3 (тот же bucket, что lakehouse)
+
+  Storage:
+    - Iceberg (general purpose) или Paimon (streaming-first)
+    - S3 / GCS / Azure Blob
+    - Catalog: AWS Glue / Polaris / Nessie / Snowflake Open Catalog
+
+  Query:
+    - OLAP: ClickHouse / StarRocks / Pinot (с Iceberg federation)
+    - SQL ad-hoc: Trino / Snowflake / DuckDB
+    - Notebook: Spark / DataFusion
+
+  Governance:
+    - Catalog с metadata (Polaris / Unity Catalog)
+    - Iceberg snapshots для audit
+    - Data contracts (ODCS) для schema enforcement
+
+Cost:
+  - Storage: $0.023/GB/мес (S3 Standard) → $0.004 (S3 IA) → $0.001 (Glacier)
+  - Compute: pay-per-query (Trino/Snowflake) или dedicated (Flink/Spark)
+  - Network: cross-AZ free, cross-region paid
+```
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="03-architecture/04-tiered-storage"
+  label="Kafka tiered storage"
+  preview="KIP-405 переносит старые сегменты в S3. Это первый шаг к Tableflow: те же байты доступны и через Kafka API, и через S3 readers."
+/>
+
+<KnowledgeCheck>
+Streaming-Lakehouse convergence — главный архитектурный сдвиг 2025-2026. Stream-table duality на физическом уровне: один storage (S3), две views (Kafka API + Iceberg table). Tableflow GA, Iceberg Topics в Redpanda, Ursa в StreamNative. Apache Paimon — Flink-native LSM lakehouse, лучший для CDC и streaming upsert. Iceberg V3 streaming write добавил Variant, deletion vectors, default values. Apache Hudi 1.0 (январь 2025) с non-blocking concurrency и LSM timeline. Real-time OLAP (ClickHouse/StarRocks/Pinot) учится читать Iceberg напрямую — single source of truth. Trade-off: latency vs cost (sub-second нужен hot tier, 30-sec работает на pure S3). Production stack: Kafka + Tableflow + Flink 2.0 + Iceberg + StarRocks. В следующих модулях: data products + contracts + mesh, agentic data engineering.
+</KnowledgeCheck>

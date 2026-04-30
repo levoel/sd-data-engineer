@@ -70,6 +70,10 @@
     {
       "id": "15-capstone",
       "title": "Capstone: Data Platform"
+    },
+    {
+      "id": "16-agentic-data-engineering",
+      "title": "Agentic Data Engineering"
     }
   ],
   "tags": [
