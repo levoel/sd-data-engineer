@@ -27,17 +27,17 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
 
 <Grid columns={4}>
   <div className="font-semibold text-slate-300">Feature</div>
-  <div className="font-semibold text-blue-400">Airflow</div>
+  <div className="font-semibold text-blue-400">Airflow 3.0</div>
   <div className="font-semibold text-emerald-400">Dagster</div>
-  <div className="font-semibold text-orange-400">Prefect</div>
+  <div className="font-semibold text-orange-400">Prefect 3.0</div>
 
   <div>Модель</div>
-  <div>Task-centric DAGs</div>
-  <div>Asset-centric</div>
-  <div>Flow + Task</div>
+  <div>Asset-centric (AIP-75) + DAGs</div>
+  <div>Asset-centric (pioneer)</div>
+  <div>Flow + Task + Artifacts</div>
 
   <div>Paradigm</div>
-  <div>DAG = Python file</div>
+  <div>@asset decorator + DAG Versioning</div>
   <div>Software-defined assets</div>
   <div>Decorators (@flow, @task)</div>
 
@@ -67,9 +67,9 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
   <div>Среднее</div>
 
   <div>Best For</div>
-  <div>Legacy, large teams</div>
-  <div>Modern data stack</div>
-  <div>Python-first teams</div>
+  <div>Airflow 3.0 (2025): Asset-centric paradigm (AIP-75 Datasets→Assets), Asset Watchers (event-driven, e.g. SQS), DAG Versioning, Edge Worker, лучше intervals со scheduling</div>
+  <div>Modern data stack, asset-first шёл первым</div>
+  <div>Python-first teams, Prefect 3.0 events-as-code</div>
 </Grid>
 
 <DiagramContainer title="Orchestration Engines: Airflow vs Dagster vs Prefect">
@@ -77,8 +77,8 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
   <Tooltip content="Категория сравнения оркестраторов">
     <DataBox label="Feature" />
   </Tooltip>
-  <Tooltip content="Apache Airflow — зрелый industry standard с самым большим community. Task-centric DAG model. Лучший выбор для legacy проектов и больших команд с existing infrastructure">
-    <DataBox label="Airflow" />
+  <Tooltip content="Apache Airflow 3.0 (релиз 22 апреля 2025) — major paradigm shift. AIP-75 Asset-Centric Syntax: Datasets переименованы в Assets, новый @asset decorator, Asset Watchers (event-driven, AWS SQS триггеры), DAG Versioning (AIP-65/AIP-66), Edge Worker для remote execution, обновлённый React UI">
+    <DataBox label="Airflow 3.0" />
   </Tooltip>
   <Tooltip content="Dagster — modern alternative от Elementl. Asset-centric подход: вместо 'запусти task' → 'обнови asset'. Лучший developer experience и встроенный lineage">
     <DataBox label="Dagster" />
@@ -90,8 +90,8 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
   <Tooltip content="Базовая парадигма определяет как вы думаете о pipeline: как о задачах, ассетах, или потоках">
     <FlowNode label="Paradigm" />
   </Tooltip>
-  <Tooltip content="DAG = Python файл. Каждый task — оператор (PythonOperator, SparkSubmitOperator). Execution context передаётся через XCom">
-    <DataBox label="Task-centric DAGs" />
+  <Tooltip content="Airflow 3.0: AIP-75 Asset-Centric Syntax — @asset decorator вместо чистого task-centric. DAG-уровневая parallelism сохранилась, но событийная модель построена вокруг Assets и Asset Watchers (event-driven scheduling)">
+    <DataBox label="Asset-centric (AIP-75)" />
   </Tooltip>
   <Tooltip content="Software-defined assets: вы описываете ЧТО нужно (данные), а не КАК (задачи). Dagster строит граф зависимостей автоматически">
     <DataBox label="Software-defined Assets" />
@@ -126,8 +126,8 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
   <Tooltip content="Рекомендация по выбору зависит от контекста проекта и команды">
     <FlowNode label="Best For" />
   </Tooltip>
-  <Tooltip content="Airflow — безопасный выбор для: existing infrastructure, large ops teams, regulated industries с compliance requirements">
-    <DataBox label="Legacy, large teams" />
+  <Tooltip content="Airflow 3.0 — современный default: asset-aware, DAG versioning из коробки, event-driven через Asset Watchers. Подходит для: existing infrastructure, large ops teams, regulated industries с compliance requirements">
+    <DataBox label="Airflow 3.0 default" />
   </Tooltip>
   <Tooltip content="Dagster — лучший выбор для: greenfield проектов, data mesh, команд, которые хотят asset-centric lineage из коробки">
     <DataBox label="Modern data stack" />
@@ -137,6 +137,67 @@ topics: ["Orchestration", "Airflow", "Dagster", "Prefect", "DAG Patterns", "Back
   </Tooltip>
 </Grid>
 </DiagramContainer>
+
+## Airflow 3.0: Asset-Centric Paradigm Shift (2025)
+
+Airflow 3.0 (релиз 22 апреля 2025) — первый major релиз с 2020 года. Это не minor bump — это смена ментальной модели: от «когда запустить task» к «когда asset должен быть свежим».
+
+### Ключевые изменения
+
+```
+AIP-75 Asset-Centric Syntax:
+  Airflow 2.x: Datasets (file-like, external pointer)
+  Airflow 3.0: Assets (first-class, @asset decorator)
+
+  @asset(schedule="@daily")
+  def silver_orders(bronze_orders: Asset) -> pd.DataFrame:
+      return bronze_orders.read().dropna()
+
+  → DAG генерируется автоматически из asset graph
+  → Lineage и зависимости — побочный эффект кода
+
+Asset Watchers (event-driven):
+  trigger = AssetWatcher(
+      source="aws_sqs",
+      queue="s3-new-files",
+  )
+  → DAG стартует на event, а не по cron
+  → Прощай sensor pooling antipattern
+
+DAG Versioning (AIP-65, AIP-66):
+  Каждый run привязан к версии DAG-а на момент старта
+  Меняешь код во время run-а — текущий run закончится на старой версии
+  UI показывает task structure, code, logs ровно той версии, что выполнялась
+  → Решает «почему вчерашний run выглядит не так, как DAG сейчас»
+
+Edge Worker:
+  Удалённое исполнение tasks за NAT, в on-prem ДЦ, в edge-локациях
+  Worker подключается к Airflow по HTTPS (не наоборот)
+  → Hybrid-cloud и data residency без VPC peering
+
+Task Execution API:
+  Multi-language: tasks могут быть не Python (Go, Rust, Java)
+  Decoupled scheduler от worker (security boundary)
+```
+
+### Сравнение asset-aware engines
+
+| Aspect | Airflow 3.0 | Dagster | Prefect 3.0 |
+|--------|-------------|---------|-------------|
+| Asset abstraction | Assets (AIP-75) | Software-Defined Assets | Artifacts (events) |
+| Pioneer | Догнал в 2025 | Шёл первым с 2020 | Hybrid: flow-first + artifacts |
+| Declarative scheduling | `@asset(schedule=...)` + Watchers | `AutoMaterializePolicy`, freshness rules | `Deployment` + event triggers |
+| Lineage | Asset graph + OpenLineage | Native asset graph | Manual via artifacts |
+| Versioning | DAG Versioning (built-in) | Через code locations | Через deployments |
+| Best when | Existing Airflow infra + хочется asset-first | Greenfield, data mesh, asset-first | Python-heavy, ML, event-driven |
+
+<Callout type="warning">
+**«Airflow устарел» — миф 2024 года.** До 3.0 Dagster действительно опережал по asset-первичности. С 3.0 разница в paradigm закрыта: Airflow догнал по asset-centric, Dagster всё ещё лучше по developer experience и testing. Выбор теперь зависит от existing infrastructure и команды, не от парадигмы.
+</Callout>
+
+<Callout type="tip">
+**Migration path Airflow 2 → 3.** Datasets → Assets — обратносовместимо: старый `Dataset` API работает. Asset Watchers заменяют sensor-poll antipattern. DAG Versioning включается опционально. Edge Worker — opt-in для hybrid setups. AWS MWAA, Astronomer, GCP Composer уже поддерживают Airflow 3 в 2025.
+</Callout>
 
 ## DAG Design Patterns
 
@@ -218,7 +279,7 @@ def test_transform_task():
 ```
 
 <Callout type="note">
-**Dagster vs Airflow для новых проектов.** Airflow — зрелый стандарт с большим community. Dagster — modern alternative с лучшим developer experience и asset-centric моделью. Для нового greenfield проекта: Dagster. Для existing Airflow infrastructure: оставаться на Airflow.
+**Dagster vs Airflow 3.0 для новых проектов.** Раньше выбор был "task-centric vs asset-centric". С Airflow 3.0 (AIP-75) парадигма у обоих asset-aware. Решающие факторы теперь: (1) developer experience и testing — Dagster всё ещё впереди; (2) existing infra и compliance — Airflow с его экосистемой провайдеров; (3) team familiarity. Greenfield + asset mesh — Dagster. Greenfield + большая команда + готовые провайдеры — Airflow 3.0. Existing Airflow 2.x — мигрировать на 3.0, не переписывать на Dagster.
 </Callout>
 
 <Callout type="warning">
@@ -226,5 +287,5 @@ def test_transform_task():
 </Callout>
 
 <KnowledgeCheck>
-Orchestration essentials: Airflow = task-centric стандарт. Dagster = asset-centric modern alternative. DAG patterns: fan-out/fan-in, sensors, dynamic DAGs. Backfill: idempotent partition overwrite. Testing: validate structure + test tasks isolated. Anti-patterns: God DAG, non-idempotent tasks. В следующем модуле: Governance, Cataloging и Lineage.
+Orchestration essentials: Airflow 3.0 (asset-centric, AIP-75 Assets, Asset Watchers, DAG Versioning, Edge Worker) — современный default. Dagster — asset-first pioneer, лучший DX. Prefect 3.0 — Python-first events. DAG patterns: fan-out/fan-in, sensors (или Asset Watchers в 3.0), dynamic DAGs. Backfill: idempotent partition overwrite. Testing: validate structure + test tasks isolated. Anti-patterns: God DAG, non-idempotent tasks. В следующем модуле: Governance, Cataloging и Lineage.
 </KnowledgeCheck>

@@ -64,12 +64,13 @@ SLAs:
       </DataBox>
     </Tooltip>
     <Arrow direction="down" />
-    <Tooltip content="Lakehouse: Bronze → Silver → Gold на Iceberg + S3">
-      <DataBox label="Lakehouse (Iceberg + S3)" className="border-emerald-500/30 w-72 mx-auto">
+    <Tooltip content="Lakehouse: Bronze → Silver → Gold на Iceberg + S3 + REST catalog (Polaris/Unity OSS/Lakekeeper). Без catalog Iceberg в production не работает: нет atomic metadata pointer, multi-engine concurrency, credential vending, RBAC.">
+      <DataBox label="Lakehouse (Iceberg + S3 + REST catalog)" className="border-emerald-500/30 w-80 mx-auto">
         <div className="text-xs space-y-1">
           <div><Icon name="layers" className="text-orange-400" size="1.2em" /> Bronze: raw CDC + events (append-only)</div>
           <div><Icon name="layers" className="text-slate-400" size="1.2em" /> Silver: cleaned, deduplicated, typed</div>
           <div><Icon name="layers" className="text-yellow-400" size="1.2em" /> Gold: star schema, aggregates</div>
+          <div><Icon name="cube" className="text-blue-400" size="1.2em" /> REST Catalog: Polaris / Unity OSS / Lakekeeper</div>
         </div>
       </DataBox>
     </Tooltip>
@@ -117,11 +118,37 @@ SLAs:
    - Idempotency: dedup by payment_id
 ```
 
+### Storage Layer (Lakehouse foundation)
+
+```
+Iceberg + S3 + REST Catalog:
+  S3                    → physical layer (Parquet data files + manifests)
+  Iceberg table format  → metadata, schema evolution, time travel, ACID
+  REST Catalog          → atomic metadata pointer, RBAC, credential vending
+
+  Iceberg БЕЗ catalog в production не работает:
+    - Нет atomic commit (race conditions при concurrent writers)
+    - Нет single source of truth о latest snapshot
+    - Multi-engine concurrency (Spark + Trino + Flink + DuckDB) ломается
+    - Нет fine-grained RBAC и credential vending для query engines
+
+  Production-ready REST catalogs (2025):
+    - Apache Polaris (Snowflake/Dremio, Apache incubation, vendor-neutral)
+    - Snowflake Open Catalog (managed Polaris, GA)
+    - Unity Catalog OSS (Databricks, multi-format Delta+Iceberg+Hudi+ML)
+    - Lakekeeper (Rust, OpenFGA-based RBAC, лёгкий footprint)
+    - Nessie (git-style branching по таблицам)
+    - AWS Glue (managed, basic, без credential vending для не-AWS engines)
+
+  Выбор для capstone: Polaris OSS (vendor-neutral, full Iceberg REST spec)
+                    или Unity Catalog OSS (если нужен multi-format + ML assets)
+```
+
 ### Processing Layer
 
 ```
 Bronze (Spark Streaming, micro-batch every 5 min):
-  Kafka → append to Iceberg tables
+  Kafka → append to Iceberg tables (через REST catalog)
   No transformations, preserve raw format
   Retention: 90 days
 
@@ -213,10 +240,14 @@ Alerting (tiered):
 **Это reference architecture.** В реальном проекте: начните с MVP (1 source → Bronze → Silver → Gold → 1 dashboard), затем итерируйте. Не стройте всё сразу — complexity kills projects.
 </Callout>
 
+<Callout type="warning">
+**Iceberg REST catalog — production requirement, не «nice to have».** Типичная ошибка SD-интервью: «Iceberg + S3» без упоминания catalog. Это equivalent «PostgreSQL без WAL» — теоретически работает, на практике падает на первом concurrent writer. Назовите конкретный catalog: Polaris (vendor-neutral), Unity Catalog OSS (multi-format + ML), Lakekeeper (Rust, lightweight), AWS Glue (managed, basic). Опишите почему: atomic commit, RBAC, credential vending, multi-engine concurrency.
+</Callout>
+
 <Callout type="tip">
 **Capstone checklist.** Проверьте свой дизайн по всем модулям курса: pipeline patterns (M02), batch (M03), streaming (M04), warehouse (M05), lakehouse (M06), modeling (M07), CDC (M08), quality (M09), orchestration (M10), governance (M11), features (M12), real-time (M13), cost (M14).
 </Callout>
 
 <KnowledgeCheck>
-Capstone essentials: E-commerce platform = CDC + clickstream + payments → Kafka → Lakehouse (Bronze/Silver/Gold) → BI + ML + Real-time. Key decisions: Iceberg for table format, Debezium for CDC, Star Schema for Gold, Feast for features, ClickHouse for real-time, Dagster for orchestration. Start with MVP, iterate. Вы завершили курс System Design для Data Engineer!
+Capstone essentials: E-commerce platform = CDC + clickstream + payments → Kafka (4.0 KRaft) → Lakehouse (Bronze/Silver/Gold на Iceberg + S3 + REST catalog Polaris/Unity OSS/Lakekeeper) → BI + ML + Real-time. Key decisions: Iceberg + REST catalog (production requirement), Debezium for CDC, Star Schema for Gold, Feast for features, ClickHouse for real-time, Dagster или Airflow 3.0 (asset-centric) для orchestration. Start with MVP, iterate. Вы завершили курс System Design для Data Engineer!
 </KnowledgeCheck>

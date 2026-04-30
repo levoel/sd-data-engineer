@@ -118,6 +118,48 @@ Exactly-once in Kafka:
   Trade-off: higher latency, lower throughput
 ```
 
+## Kafka 4.0 (March 2025): что изменилось архитектурно
+
+Kafka 4.0 (релиз март 2025) — major release с тремя architectural-уровневыми изменениями, которые меняют deployment-диаграмму и spectrum use-cases:
+
+```
+1. KRaft-only (ZooKeeper deprecated):
+   До 4.0: Kafka Cluster = Brokers + ZooKeeper ensemble (3-5 nodes)
+   После 4.0: только KRaft (Raft-based metadata quorum внутри brokers)
+
+   Импликации:
+     - Минус целый компонент в deployment topology
+     - 500K partitions/cluster limit (был ZK-bound) убран
+     - Java 17 для brokers (раньше Java 11 ок)
+     - Apache Kafka 4.0 не поддерживает ZK mode вообще
+     - Migration: 3.x cluster → upgrade в bridge mode → KRaft
+
+2. KIP-848: новый consumer rebalance protocol:
+   Старый протокол: stop-the-world, все consumers замораживаются
+   Новый (server-side): incremental, broker управляет assignment
+
+   При join нового consumer:
+     - Старый: все 100 consumers ребалансируются → 30 сек простоя
+     - Новый: только нужные partitions передвигаются → секунды
+
+   Большие consumer groups (100+ instances) — главные бенефициары.
+
+3. KIP-932 Share Groups (queue semantics, preview в 4.0, GA в 4.2):
+   До: Kafka = pub-sub log, каждый partition → один consumer в group
+   После: share groups = queue semantics поверх Kafka topics
+
+   - Cooperative consumption: несколько consumers читают один partition
+   - Individual message ack/redelivery (как RabbitMQ/SQS)
+   - Unordered processing (за счёт ordering в обмен на queue patterns)
+
+   Kafka теперь конкурирует с RabbitMQ/SQS на queue use-cases без
+   отдельного broker (один system, два workload pattern).
+```
+
+<Callout type="warning">
+**ZooKeeper больше нет.** Если ваш runbook, диаграмма архитектуры или CI/CD упоминают ZK ensemble — устарело с 4.0. KRaft = брокеры сами держат metadata quorum через Raft. Это упрощает ops, но требует новый mental model: controllers могут совмещаться с brokers (combined mode) или быть выделенными (dedicated controllers) — выбор по cluster-size.
+</Callout>
+
 ## Design Decisions
 
 ### 1. Topic Design
@@ -161,5 +203,5 @@ Retention strategies:
 ```
 
 <KnowledgeCheck>
-Kafka SD essentials: topics (logical channels), partitions (parallelism unit), consumer groups (scaling consumers), ordering (per-partition only), delivery semantics (at-least-once default). Key selection determines ordering and distribution. В следующем уроке: Flink и stream processing patterns.
+Kafka SD essentials: topics (logical channels), partitions (parallelism unit), consumer groups (scaling consumers), ordering (per-partition only), delivery semantics (at-least-once default). Key selection determines ordering and distribution. Kafka 4.0 (март 2025): KRaft-only (ZooKeeper deprecated), KIP-848 next-gen consumer rebalance, KIP-932 Share Groups (queue semantics, GA в 4.2). В следующем уроке: Flink и stream processing patterns.
 </KnowledgeCheck>

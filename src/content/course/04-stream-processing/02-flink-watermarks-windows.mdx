@@ -130,6 +130,39 @@ Flink Checkpointing:
     min_pause = 30 sec
 ```
 
+## Flink 2.0: Disaggregated State (2025)
+
+Flink 2.0 (релиз 24 марта 2025) — первый major релиз за 9 лет. Главное архитектурное изменение — disaggregated state management через ForSt key-value backend.
+
+```
+Flink 1.x (RocksDB local state):
+  TaskManager
+    ├─ Operator state в RocksDB на локальном диске
+    ├─ Размер state ограничен local disk capacity
+    ├─ Rescaling = state redistribution = перезагрузка с checkpoint в S3
+    └─ Cluster sizing определяется max state size
+
+Flink 2.0 (ForSt + S3/HDFS):
+  TaskManager
+    ├─ ForSt = "For Streaming" KV store
+    ├─ State хранится в object storage (S3/HDFS)
+    ├─ Локальный hybrid cache (1 GB) для hot working set
+    ├─ Async execution model для SQL operators (joins, aggregates)
+    ├─ State snapshot caching между checkpoints
+    └─ Rescaling = смена metadata pointer (instant)
+
+Импликации:
+  - Unlimited state size (не bound by local disk)
+  - Fast recovery независимо от размера state
+  - 75-120% throughput при state 1.2-4.8 GB с 1 GB cache (vs RocksDB local)
+  - Cluster sizing меняется: меньше nodes, тоньше disks
+  - Stateful Flink jobs становятся cloud-native, как stateless
+```
+
+<Callout type="tip">
+**Когда переходить на Flink 2.0 ForSt.** Если ваш state регулярно превышает 100 GB на TaskManager или вы регулярно ребалансируете кластер при росте state — disaggregated state снимает оба ограничения. Если state маленький (менее 10 GB) — RocksDB local быстрее, переход не обязателен. Cluster sizing для ForSt: меньше TaskManagers, дешевле disks, S3 throughput становится bottleneck вместо local IOPS.
+</Callout>
+
 ## Streaming Design Patterns
 
 ### Pattern 1: Enrichment (stream + lookup)
@@ -177,5 +210,5 @@ Benefits: main pipeline doesn't block on bad events
 ```
 
 <KnowledgeCheck>
-Stream processing: Flink (stateful), Kafka (event bus), event time + watermarks (correctness), windowing (tumbling/sliding/session), checkpointing (exactly-once). Patterns: enrichment, deduplication, DLQ. В следующем модуле: Data Warehouse Design.
+Stream processing: Flink (stateful), Kafka (event bus), event time + watermarks (correctness), windowing (tumbling/sliding/session), checkpointing (exactly-once). Flink 2.0 (март 2025) — disaggregated state через ForSt: state в S3/HDFS, локальный hybrid cache, unlimited state size, fast recovery. Patterns: enrichment, deduplication, DLQ. В следующем модуле: Data Warehouse Design.
 </KnowledgeCheck>
