@@ -54,6 +54,13 @@ Apache Spark — de-facto стандарт для batch processing больши�
 
 Spark превращает ваш код в **DAG (Directed Acyclic Graph)** операций:
 
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="01-architecture-internals/04-dag-scheduler"
+  label="DAG Scheduler — устройство и stages"
+  preview="Глубокий разбор DAG Scheduler: как Spark строит execution plan, разбивает на stages, зачем shuffle boundary."
+/>
+
 ```
 Код:
   df = spark.read.parquet("orders")     # Stage 0: read
