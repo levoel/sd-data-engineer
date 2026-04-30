@@ -13,6 +13,20 @@ topics: ["Governance", "Data Catalog", "Lineage", "PII", "GDPR", "Access Control
 
 Data governance — система правил и инструментов, которая отвечает на вопросы: какие данные есть, откуда они, кто имеет доступ, где PII, как удалить данные пользователя по запросу GDPR.
 
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="01-foundations/01-what-is-governance"
+  label="Что такое data governance — фундамент"
+  preview="Полное определение governance, отличие от data management, ключевые роли (CDO, data steward, data owner), DAMA-DMBOK framework."
+/>
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="01-foundations/02-dmbok-frameworks"
+  label="DMBOK и frameworks — теория governance"
+  preview="DAMA-DMBOK 2 как референсный фреймворк, knowledge areas, как соотносится с практикой data engineering."
+/>
+
 ```
 Без governance:
   "Где customer email?" — grep по 200 таблицам
@@ -96,6 +110,20 @@ Data governance — система правил и инструментов, к�
   Cloud-first → Managed solutions (Atlan, Select Star)
 ```
 
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="03-metadata-catalogs/03-catalog-fundamentals"
+  label="Catalog fundamentals — теория и реализации"
+  preview="Что должен делать каталог: discovery, lineage, glossary, ownership, классификация. Сравнение open-source и commercial решений."
+/>
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="03-metadata-catalogs/04-data-lineage"
+  label="Data lineage — глубокий разбор"
+  preview="Column-level vs table-level, automatic extraction approaches (SQL parsing, runtime hooks), OpenLineage standard, impact analysis."
+/>
+
 ## Lineage Tracking
 
 ```
@@ -144,6 +172,20 @@ Role-based access (RBAC):
     region_manager_eu: WHERE region = 'EU'
     region_manager_us: WHERE region = 'US'
 ```
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="06-security-access/02-rbac-implementation"
+  label="RBAC implementation — практический разбор"
+  preview="Реализация RBAC в реальных системах: модели разрешений, group inheritance, миграция между системами, типичные ошибки."
+/>
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="06-security-access/03-abac-policy-as-code"
+  label="ABAC и Policy-as-Code (OPA)"
+  preview="Когда RBAC недостаточно: ABAC через OPA, policy-as-code, тестирование политик, integration с data warehouse."
+/>
 
 ## PII Handling
 

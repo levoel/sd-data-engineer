@@ -101,6 +101,20 @@ Savings example (100 TB Bronze):
   With lifecycle:    $400/month (82% saving)
 ```
 
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="10-ttl-tiered-storage/02-storage-policy-move-ttl"
+  label="TTL и tiered storage в ClickHouse"
+  preview="Storage policies, MOVE TTL для автоматического перемещения partitions между volumes, как реализовать hot/warm/cold tiers."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="10-ttl-tiered-storage/03-zero-copy-replication"
+  label="Zero-copy replication для S3"
+  preview="Как ClickHouse делает zero-copy replication поверх object storage — отдельная replication metadata vs полная копия данных, экономия storage cost."
+/>
+
 ## Compute Right-sizing
 
 ```
@@ -148,6 +162,13 @@ Spark:
      spark.sql.adaptive.enabled = true
      spark.sql.adaptive.coalescePartitions.enabled = true
 ```
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="12-production-operations/04-cost-optimization"
+  label="Cost optimization в Spark — практика"
+  preview="Spot instances для executors, dynamic allocation, ARM/Graviton, Photon vs vanilla, экономия на shuffle через AQE."
+/>
 
 ## Auto-scaling Strategies
 

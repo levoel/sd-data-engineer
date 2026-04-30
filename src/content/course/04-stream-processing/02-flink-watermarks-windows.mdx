@@ -60,6 +60,20 @@ Processing Time: когда СИСТЕМА обработала событие
 Processing time windows are unreliable: network delays, reprocessing, consumer lag → events in wrong windows. Event time + watermarks = correct results regardless of processing delays.
 </Callout>
 
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="09-structured-streaming/04-watermarks-late-data"
+  label="Watermarks в Spark Structured Streaming"
+  preview="Как watermark работает в Spark: семантика, late data handling, append/update mode, отличия от Flink."
+/>
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="09-structured-streaming/05-windowing"
+  label="Windowing в Structured Streaming"
+  preview="Tumbling/sliding/session windows, window aggregations, dropDuplicates с watermark, ловушки stateful agg."
+/>
+
 ## Watermarks: когда окно «закрыто»
 
 **Проблема:** Как Flink знает, что все events для window [10:00-10:01] прибыли?
@@ -191,6 +205,13 @@ Deduplication in streaming:
   
   TTL: clean old entries (e.g., 24 hours) to bound state size
 ```
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="09-structured-streaming/06b-transform-with-state"
+  label="Arbitrary State API v2 в Spark 4.0"
+  preview="transformWithState — гибкая stateful обработка: TTL, multiple state types, timer-based callbacks. Аналог Flink ProcessFunction."
+/>
 
 ### Pattern 3: Dead Letter Queue (DLQ)
 

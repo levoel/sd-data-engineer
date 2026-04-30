@@ -100,6 +100,20 @@ Denormalized (Star/Wide):
 
 Wide table — денормализованная таблица с десятками/сотнями колонок. Все данные в одном месте:
 
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="07-data-modeling/01-denormalized-wide-tables"
+  label="Wide tables в ClickHouse — оптимальная стратегия"
+  preview="Почему ClickHouse выигрывает на wide tables: columnar compression, partial column reads, dictGet вместо JOINs."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="07-data-modeling/05-nested-vs-flattened"
+  label="Nested vs Flattened структуры"
+  preview="Когда выбрать Nested type, когда flatten на уровень таблицы — trade-offs производительности и сложности запросов."
+/>
+
 ```
 orders_wide (50+ columns):
   -- Order facts

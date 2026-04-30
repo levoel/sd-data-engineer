@@ -40,6 +40,13 @@ Lakehouse объединяет дешёвое хранилище data lake с AC
   </FlowColumn>
 </DiagramContainer>
 
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="10-lakehouse-formats/01-lakehouse-architecture"
+  label="Lakehouse архитектура в Spark"
+  preview="Spark как универсальный engine для всех table formats: общая модель чтения metadata, vectorized read, Catalyst оптимизации поверх Iceberg/Delta/Hudi."
+/>
+
 ## Table Formats: Delta vs Iceberg vs Hudi
 
 <Grid columns={4}>
@@ -88,6 +95,27 @@ Lakehouse объединяет дешёвое хранилище data lake с AC
   <div>Multi-engine, vendor-neutral</div>
   <div>Upsert-heavy (CDC)</div>
 </Grid>
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="12-iceberg/01-catalog-architecture-metadata"
+  label="Iceberg catalog architecture — детальный разбор"
+  preview="Уровни metadata Iceberg: catalog, table metadata, manifest list, manifest, data files. Почему Iceberg выигрывает в multi-engine setup."
+/>
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="11-delta-lake/01-transaction-log-architecture"
+  label="Delta transaction log — устройство _delta_log"
+  preview="JSON commits, checkpoints, optimistic concurrency control, как Delta делает atomic writes на S3."
+/>
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="13-hudi/01-timeline-architecture"
+  label="Hudi timeline — основа MVCC"
+  preview="Как Hudi timeline отличается от Delta/Iceberg: instants, action types, completed/inflight/requested states, MVCC на уровне timeline."
+/>
 
 ## Table Format Internals
 
@@ -168,6 +196,13 @@ Gold (Aggregated):
 <Callout type="tip">
 **Тренд:** Iceberg становится де-факто стандартом. Snowflake, BigQuery, Databricks, AWS Athena — все поддерживают Iceberg tables. Vendor-neutral формат побеждает.
 </Callout>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="15-integrations/04-iceberg-integration"
+  label="ClickHouse + Iceberg — query engine для lakehouse"
+  preview="Как ClickHouse читает Iceberg tables: REST catalog, partition pruning, statistics-aware планирование, ограничения и use-cases."
+/>
 
 <KnowledgeCheck>
 Lakehouse essentials: Table Format = ACID + time travel поверх object storage. Iceberg = vendor-neutral лидер, hidden partitions. Delta = Databricks ecosystem. Hudi = upsert-heavy CDC. Compaction решает small file problem. Medallion: Bronze → Silver → Gold. Schema evolution: Iceberg лучший (add/drop/rename без rewrite). В следующем модуле: Data Modeling.

@@ -42,6 +42,20 @@ Key: granularity of overwrite = partition (date, hour)
   Sweet spot: daily partitions for most batch jobs
 ```
 
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="04-performance-tuning/02-partitioning-strategies"
+  label="Partitioning стратегии в Spark"
+  preview="Как выбрать ключ партиционирования, dynamic partition overwrite mode, ловушки cardinality, partition pruning при чтении."
+/>
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="05-aqe-deep-dive/02-coalesce-shuffle-partitions"
+  label="AQE: динамическое coalesce partitions"
+  preview="Adaptive Query Execution автоматически объединяет мелкие partitions после shuffle — критично для batch с переменным объёмом."
+/>
+
 ## Pattern 2: Incremental Processing
 
 **Проблема:** Reprocessing all data every day is expensive for 100TB+ datasets.

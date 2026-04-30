@@ -41,6 +41,20 @@ topics: ["CDC", "Debezium", "Change Data Capture", "Log-based CDC", "Schema Evol
 **Всегда предпочитайте log-based CDC.** Query-based — fallback для баз без WAL доступа (legacy systems, SaaS APIs).
 </Callout>
 
+<CrossCourseRef
+  courseId="debezium"
+  lessonSlug="01-module-1/01-cdc-fundamentals"
+  label="CDC fundamentals — теория и практика"
+  preview="Зачем CDC, log-based vs query-based vs trigger-based, типы событий, ordering guarantees — фундамент для дизайна pipeline."
+/>
+
+<CrossCourseRef
+  courseId="debezium"
+  lessonSlug="02-module-2/01-logical-decoding-deep-dive"
+  label="Logical decoding в PostgreSQL — внутренности"
+  preview="Как Debezium читает WAL: replication slots, decoder plugins, performance impact на source DB, типичные ошибки конфигурации."
+/>
+
 ## Debezium Architecture
 
 <DiagramContainer title="CDC Pipeline: Source → Debezium → Kafka → Lakehouse" className="my-6">
@@ -145,6 +159,20 @@ Strategies:
   b) Schema Registry: enforce BACKWARD/FORWARD compatibility
   c) Bronze layer: store raw (tolerant), validate in Silver
 ```
+
+<CrossCourseRef
+  courseId="debezium"
+  lessonSlug="05-module-5/08-schema-evolution"
+  label="Schema evolution в CDC pipelines — практика"
+  preview="Как Debezium обрабатывает ALTER TABLE, синхронизация с Schema Registry, подходы к управлению breaking changes."
+/>
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="05-kafka-connect/02-source-connectors"
+  label="Source connectors в Kafka Connect"
+  preview="Architecture Kafka Connect: SourceTask жизненный цикл, offset commits, restart recovery — фундамент для Debezium."
+/>
 
 <Callout type="warning">
 **Опасно: breaking schema changes без координации.** `DROP COLUMN` или `RENAME COLUMN` ломает downstream. Всегда: add new → migrate → drop old. Schema Registry enforcement = обязательно в production.

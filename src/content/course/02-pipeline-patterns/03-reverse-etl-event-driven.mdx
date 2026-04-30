@@ -133,6 +133,27 @@ Outbox Pattern:
   Проблема: DB write succeeded, Kafka publish failed → inconsistency
 ```
 
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="12-design-patterns/03-transactional-outbox"
+  label="Transactional Outbox — реализация"
+  preview="Полный разбор Outbox Pattern: схема таблицы, atomicity транзакции, как Debezium читает outbox без потерь."
+/>
+
+<CrossCourseRef
+  courseId="debezium"
+  lessonSlug="05-module-5/05-outbox-pattern-theory"
+  label="Outbox Pattern в Debezium — теория"
+  preview="Почему Outbox решает dual-write problem, как Debezium конфигурируется на чтение outbox таблицы, типичные ошибки."
+/>
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="12-design-patterns/01-event-sourcing"
+  label="Event Sourcing на Kafka — глубокий разбор"
+  preview="Event Sourcing как архитектурный паттерн: replay, snapshots, projections. Сравнение с CRUD-подходом."
+/>
+
 **Event Sourcing**: хранить events, не state
 
 ```

@@ -74,6 +74,20 @@ Cost of bad data:
 | **Uniqueness** | Нет дубликатов? | COUNT(DISTINCT id) = COUNT(id) |
 | **Schema** | Структура верная? | Все expected columns present, types correct |
 
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="04-data-quality/01-quality-dimensions"
+  label="Six dimensions of data quality — глубоко"
+  preview="Полная теория качества данных: формальные определения, метрики, как измерять каждое измерение в production."
+/>
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="04-data-quality/07-freshness-observability"
+  label="Freshness и observability — практика"
+  preview="Как мониторить freshness в production: SLO/SLA, alert thresholds, dashboards, интеграция с PagerDuty."
+/>
+
 ## Инструменты Data Quality
 
 ### Great Expectations
@@ -93,6 +107,13 @@ expectation_suite = {
 }
 # Run: validator.validate(df, suite) → results + data docs
 ```
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="04-data-quality/06-great-expectations"
+  label="Great Expectations — production deployment"
+  preview="Установка, expectation suites, data docs, интеграция с Airflow/Dagster, лучшие практики для team-wide adoption."
+/>
 
 ### dbt Tests
 
@@ -116,6 +137,13 @@ models:
               to: ref('dim_customer')
               field: customer_id
 ```
+
+<CrossCourseRef
+  courseId="data-governance"
+  lessonSlug="04-data-quality/05-dbt-quality-tests"
+  label="dbt quality tests — глубокий разбор"
+  preview="Generic vs singular tests, custom test packages, severity levels, store failures для root cause analysis."
+/>
 
 ## Data Contracts (ODCS)
 

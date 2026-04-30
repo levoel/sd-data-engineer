@@ -13,6 +13,20 @@ topics: ["Kafka", "Topics", "Partitions", "Consumer Groups", "Replication", "Ord
 
 Kafka — не просто message broker. Это **distributed commit log** — append-only журнал, который хранит события и позволяет множеству потребителей читать их независимо.
 
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="01-kafka-architecture/01-distributed-commit-log"
+  label="Distributed commit log — фундаментальная модель Kafka"
+  preview="Почему append-only log как первичная абстракция: durability, replay, multiple consumers, отличие от очередей."
+/>
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="01-kafka-architecture/04-kraft-controller"
+  label="KRaft controller — архитектура без ZooKeeper"
+  preview="Внутреннее устройство KRaft quorum: metadata log, controller election, миграция с ZooKeeper, combined vs dedicated controllers."
+/>
+
 <DiagramContainer title="Kafka: Producers → Topics → Consumers" className="my-6">
   <FlowColumn className="p-4 gap-2">
     <FlowRow className="gap-3 justify-center flex-wrap">
@@ -155,6 +169,20 @@ Kafka 4.0 (релиз март 2025) — major release с тремя architectur
    Kafka теперь конкурирует с RabbitMQ/SQS на queue use-cases без
    отдельного broker (один system, два workload pattern).
 ```
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="03-consumers/06-share-groups-kip932"
+  label="KIP-932 Share Groups — детали реализации"
+  preview="Как Share Groups реализуют queue semantics поверх log: ack/nack/release, redelivery, отличия от consumer groups."
+/>
+
+<CrossCourseRef
+  courseId="kafka-course"
+  lessonSlug="04-kafka-internals/01-log-segments"
+  label="Log segments — физический уровень storage"
+  preview="Сегментация лога, индексные файлы, retention механика, log compaction под капотом — что реально лежит на диске брокера."
+/>
 
 <Callout type="warning">
 **ZooKeeper больше нет.** Если ваш runbook, диаграмма архитектуры или CI/CD упоминают ZK ensemble — устарело с 4.0. KRaft = брокеры сами держат metadata quorum через Raft. Это упрощает ops, но требует новый mental model: controllers могут совмещаться с brokers (combined mode) или быть выделенными (dedicated controllers) — выбор по cluster-size.

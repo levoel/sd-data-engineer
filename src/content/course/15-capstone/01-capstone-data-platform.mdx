@@ -144,6 +144,20 @@ Iceberg + S3 + REST Catalog:
                     или Unity Catalog OSS (если нужен multi-format + ML assets)
 ```
 
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="12-iceberg/01-catalog-architecture-metadata"
+  label="Iceberg catalog metadata — фундамент"
+  preview="Полный разбор уровней метаданных Iceberg, почему catalog не nice-to-have, а обязательная часть стека."
+/>
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="10-lakehouse-formats/03-apache-iceberg"
+  label="Apache Iceberg в Spark — production"
+  preview="Конфигурация Spark + Iceberg, REST catalog setup, write оптимизации, MERGE INTO для upsert pattern."
+/>
+
 ### Processing Layer
 
 ```
@@ -197,6 +211,27 @@ Real-time (ClickHouse):
   Materialized Views: pre-aggregate by minute/hour
   Latency: p99 under 100ms
 ```
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="04-materialized-views/02-mv-aggregating-pattern"
+  label="MV + AggregatingMergeTree паттерн"
+  preview="Как делать pre-aggregation через MV + AggregatingMergeTree: state functions, merge functions, типичные ошибки производительности."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="11-ingestion-patterns/02-kafka-table-engine"
+  label="Kafka table engine в ClickHouse"
+  preview="Внутренности Kafka engine, gotchas с consumer groups, materialized view pattern для durable storage."
+/>
+
+<CrossCourseRef
+  courseId="datafusion-course"
+  lessonSlug="12-lakehouse-integration/03-apache-iceberg"
+  label="DataFusion как embedded engine для Iceberg"
+  preview="DataFusion — лёгкий Rust-engine для чтения Iceberg в serving layer, альтернатива Trino/Presto без heavy cluster."
+/>
 
 ### Orchestration
 

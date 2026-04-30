@@ -107,6 +107,20 @@ GROUP BY d.segment
 -- Один JOIN, максимальная скорость
 ```
 
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="07-data-modeling/01-denormalized-wide-tables"
+  label="Денормализованные wide tables в ClickHouse"
+  preview="Почему ClickHouse предпочитает wide tables вместо star schema, dictGet вместо JOIN, trade-offs хранения и обновлений."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="01-storage-engine/01-part-anatomy"
+  label="Part anatomy — физический уровень хранения ClickHouse"
+  preview="Как parts устроены на диске: columns.bin, marks, primary.idx — фундамент для понимания производительности warehouse."
+/>
+
 ### Snowflake Schema
 
 Dimensions нормализованы — несколько уровней:
@@ -155,6 +169,13 @@ customer_id | name  | city     | valid_from | valid_to   | is_current
 
 JOIN fact → dimension по date range для historical accuracy
 ```
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="07-data-modeling/04-slowly-changing-dimensions"
+  label="SCD в ClickHouse — практическая реализация"
+  preview="Как реализовать SCD Type 2 в ClickHouse: ReplacingMergeTree, версионирование, FINAL, AggregatingMergeTree для текущего состояния."
+/>
 
 ## Warehouse vs Lakehouse — когда что
 
