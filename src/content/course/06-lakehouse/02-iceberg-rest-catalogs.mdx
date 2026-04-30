@@ -1,0 +1,538 @@
+---
+title: "Iceberg REST Catalogs: Polaris, Unity, Lakekeeper, Gravitino, Nessie"
+description: "Catalog как сердце Lakehouse: REST spec, credential vending, RBAC, branching, AI metadata. Polaris vs Unity OSS vs Lakekeeper vs Glue vs Gravitino vs Nessie"
+order: 2
+difficulty: "advanced"
+estimatedTime: 30
+topics: ["Iceberg", "REST Catalog", "Polaris", "Unity Catalog", "Lakekeeper", "Gravitino", "Nessie", "Credential Vending", "Lakehouse Governance"]
+---
+
+# Iceberg REST Catalogs
+
+## Зачем catalog для Iceberg
+
+Iceberg-таблица — это не один файл, а множество слоёв: data files (Parquet) + manifest files + manifest list + metadata.json + snapshots. Без catalog'а у клиентов нет надёжного способа узнать "какая metadata.json актуальна сейчас".
+
+```
+Iceberg table = слои метаданных:
+  metadata.json        — текущий schema, snapshot pointer, partition spec
+  snap-<id>.avro       — manifest list (какие manifests входят в snapshot)
+  manifest-<id>.avro   — список data files + статистика
+  data-<uuid>.parquet  — собственно данные
+
+Кто знает "current metadata.json"?
+  Без catalog: имя файла в S3 + lock-механизм → race condition
+  С catalog:   atomic compare-and-swap указателя на metadata.json
+```
+
+<Callout type="warning">
+**Concurrent writers без catalog = data loss.** Hadoop Catalog (file-based) использует rename для atomic commit, но S3 не даёт атомарного rename. Два writer'а одновременно увидят одну metadata.json как current → один из commits потеряется. Catalog решает это через transactional pointer (DB row, OAuth-protected REST endpoint).
+</Callout>
+
+Что catalog даёт сверх atomic commits:
+
+- **Namespace и discovery**: иерархия `catalog.namespace.table`, listing API
+- **RBAC и governance**: кто может читать `analytics.gold.orders`
+- **Lineage и audit**: журнал commits, who/when/what
+- **Credential vending**: catalog выдаёт временные scoped credentials к S3 — клиент не видит долгоживущие ключи
+- **Metrics reporting**: query stats, scan size, file pruning эффективность
+
+## Эволюция catalogs
+
+<DiagramContainer title="История Iceberg catalogs: от Hive Metastore к REST spec" className="my-6">
+  <FlowColumn className="p-4 gap-3">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Hive Metastore (2010+) — Java/Thrift API, привязан к Hadoop стеку. Хранит схемы и partitions в RDBMS. Легаси, но всё ещё используется в Spark/Hive deployments">
+        <FlowNode variant="default">Hive Metastore (legacy)</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Hadoop Catalog — file-based, использует имя metadata.json и rename для commit. На S3 rename не атомарный → race conditions при concurrent writers. Подходит только для single-writer сценариев">
+        <FlowNode variant="default">Hadoop Catalog (file)</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="AWS Glue Catalog — managed, IAM-based access. Привязан к AWS ecosystem. До 2024 был де-факто стандартом для Iceberg на AWS">
+        <FlowNode variant="default">AWS Glue / DynamoDB</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Iceberg REST Catalog Spec (2023) — open OpenAPI-based protocol. Любой engine говорит REST с любым catalog implementation. Vendor-neutral основа современного Lakehouse">
+        <FlowNode variant="output">REST Catalog Spec (2023)</FlowNode>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+```
+Этапы эволюции:
+
+Hive Metastore (2010):
+  + Стандарт для Hadoop ecosystem
+  - Thrift, JVM-only клиенты
+  - Сложная установка, тяжёлые клиенты
+
+Hadoop Catalog:
+  + Простота: только S3 + rename
+  - На S3 нет атомарного rename → data loss
+  - Нет RBAC, нет namespace governance
+
+Glue / DynamoDB:
+  + Managed, atomic через DynamoDB conditional writes
+  - Vendor lock-in (AWS)
+  - Нет cross-engine credential vending
+
+REST Catalog Spec (2023):
+  + OpenAPI, language-agnostic
+  + Standard endpoints для commit, snapshot, schema
+  + Credential vending API
+  + Multiple implementations: Polaris, Unity, Lakekeeper, Glue REST, Nessie
+```
+
+## REST Catalog Spec
+
+Apache Iceberg REST Catalog Specification — открытый OpenAPI-стандарт, описывающий клиент-серверный протокол: namespace operations, table operations, snapshot management, commits, credential vending.
+
+```
+Ключевые эндпоинты:
+
+GET  /v1/config                                        — server config
+GET  /v1/{prefix}/namespaces                           — list namespaces
+POST /v1/{prefix}/namespaces                           — create namespace
+GET  /v1/{prefix}/namespaces/{ns}/tables               — list tables
+POST /v1/{prefix}/namespaces/{ns}/tables               — create table
+GET  /v1/{prefix}/namespaces/{ns}/tables/{table}       — load table metadata
+POST /v1/{prefix}/namespaces/{ns}/tables/{table}       — commit (CAS на snapshot)
+GET  /v1/{prefix}/namespaces/{ns}/tables/{table}/credentials — vended credentials
+
+Authentication: OAuth 2.0 / SigV4 / token
+Atomic commit: If-Match header с current metadata location
+```
+
+<Callout type="tip">
+**Vendor-neutral следствие:** один и тот же Spark / Trino / Flink / DuckDB / PyIceberg клиент работает с Polaris, Unity OSS, Lakekeeper, Glue REST, Nessie без изменений кода — меняется только URI. Это убивает lock-in на уровне catalog.
+</Callout>
+
+## Apache Polaris
+
+Snowflake донёс Polaris в Apache Software Foundation в августе 2024. Сейчас Apache Polaris — incubating, релиз 1.3.0 в январе 2026. Это reference implementation REST catalog для production.
+
+```
+Apache Polaris ключевые свойства (1.3, январь 2026):
+
+Архитектура:
+  Java Quarkus сервис + PostgreSQL (или JDBC) для persistence
+  REST API строго по Iceberg spec
+  Multi-tenant: realm-based isolation
+
+Cross-engine:
+  Spark, Trino, Flink, DuckDB, Snowflake, Doris, StarRocks, Daft
+  Один catalog — все движки одновременно читают и пишут
+
+Credential vending:
+  Клиент НЕ видит S3/GCS/Azure ключи
+  Catalog выдаёт STS-токен с scope = только эта таблица
+  TTL 15-60 минут, refresh через REST
+
+RBAC:
+  Catalog roles: admin, table_admin, data_admin, reader
+  Privileges на namespace/table уровне
+  External principals (sync с IdP)
+
+Polaris 1.3 новое:
+  - Iceberg metrics reporting (query stats в логи)
+  - Open Policy Agent integration для авторизации
+  - Location-based access restrictions (запрет vending для путей вне allowlist)
+  - Per-catalog AWS KMS
+  - Generic Tables GA: Delta Lake, Hudi в одном catalog
+```
+
+<Callout type="note">
+**Snowflake Open Catalog** — это Snowflake-managed Apache Polaris. Та же кодовая база, тот же REST API, но вы платите Snowflake за хостинг. Был известен как "Snowflake Polaris" до ребрендинга в 2025.
+</Callout>
+
+## Unity Catalog OSS
+
+Databricks открыл Unity Catalog в июне 2024 (LF AI & Data Foundation, sandbox). К 2025 — multi-format catalog: Delta + Iceberg + Parquet + AI-ассеты (модели, volumes, functions).
+
+```
+Unity Catalog OSS особенности:
+
+Multi-format:
+  Native Delta Lake (родной формат)
+  Iceberg через UniForm (Universal Format) — таблица одновременно
+    видна и как Delta, и как Iceberg для READ
+  REST endpoint для Iceberg клиентов:
+    http://host:8080/api/2.1/unity-catalog/iceberg/
+
+Multi-modal:
+  Tables, Volumes (unstructured files), Models, Functions
+  Единая модель governance для data + AI
+
+Credential vending:
+  AWS / Azure / GCP — короткоживущие токены через STS
+  Поддержка external locations с IAM ролями
+
+Лимит:
+  REST API "evolving" — продолжают меняться
+  В Databricks-managed варианте функций больше, чем в OSS
+  UniForm — read-only через Iceberg, writes идут как Delta
+```
+
+<Callout type="warning">
+**UniForm — это не "честный" Iceberg.** Таблица физически записана в Delta-формате, но Unity Catalog поверх неё генерирует Iceberg metadata (manifests, snapshots) для read-совместимости. Writes из Spark/Trino через Iceberg API в OSS-варианте ограничены — реальный двунаправленный Iceberg writes стабилизируются в managed Databricks 2025.
+</Callout>
+
+## Lakekeeper
+
+Lakekeeper — Iceberg REST catalog на Rust, single binary, без JVM/Python runtime. Apache 2.0, production-ready на 2025.
+
+```
+Lakekeeper отличия:
+
+Stack:
+  Rust (axum) — низкое потребление памяти, быстрый старт
+  PostgreSQL для persistence
+  Один статический бинарь, helm chart для k8s
+
+Authorization через OpenFGA:
+  Fine-grained ReBAC (relationship-based access control)
+  Bi-directional inheritance для иерархии namespace
+  Внешний policy engine (как Zanzibar у Google)
+
+Storage access:
+  Vended credentials для S3
+  Remote signing (signed URLs) — клиент не получает credentials,
+    catalog подписывает каждый GET/PUT по запросу
+  Native k8s service account auth
+
+Identity:
+  OIDC (Keycloak, Auth0, AWS Cognito, Azure AD)
+  Без vendor IdP lock-in
+```
+
+<Callout type="tip">
+**Когда выбирают Lakekeeper:** на Rust-стеке, без JVM, OpenFGA уже используется для других сервисов, нужен fine-grained ReBAC, или нужен remote signing вместо vended credentials (для соответствия требованиям compliance, где credentials не должны покидать catalog).
+</Callout>
+
+## Apache Gravitino
+
+Apache Gravitino graduated в Top-Level Project в июне 2025, версия 1.0.0. Позиционируется как "metadata lake" — catalog of catalogs, federation поверх множества backends.
+
+```
+Gravitino — federated metadata + AI-native:
+
+Catalog of catalogs:
+  Federates Iceberg, Delta, Hudi, Paimon, Hive
+  Single API над несколькими backends
+  Geo-distributed metadata
+
+Multi-modal:
+  Не только tables — модели, vector data (Lance), filesets
+  Lance REST service для ML/AI workloads
+
+AI-native (2025):
+  MCP server — LLM/AI-агенты ходят в catalog через Model Context Protocol
+  Metadata-driven action system
+  Contextual engineering для AI агентов
+  Tag-based governance
+
+Iceberg REST endpoint:
+  Native реализация Iceberg REST spec
+  Trino, Spark, Flink, PyIceberg как клиенты
+```
+
+<Callout type="note">
+**Gravitino vs Polaris позиционирование.** Polaris — глубокий best-in-class Iceberg catalog. Gravitino — широкий federated metadata layer над всеми форматами + AI-ассеты. Они не взаимоисключающие: Gravitino может проксировать Polaris как один из backends.
+</Callout>
+
+## Apache Nessie
+
+Project Nessie от Dremio — единственный catalog с git-style branching и merge для данных. Транзакционный catalog с commit history.
+
+```
+Nessie git-семантика:
+
+Branches:
+  main, dev, feature_x — каждая branch указывает на commit
+  Каждая branch видит свою версию ВСЕХ Iceberg-таблиц
+  Изоляция: writes в feature_x не видны на main
+
+Multi-table transactions:
+  CREATE BRANCH experiment FROM main;
+  INSERT INTO orders ... ON BRANCH experiment;
+  UPDATE customers ... ON BRANCH experiment;
+  MERGE BRANCH experiment INTO main;
+  → Несколько таблиц коммитятся атомарно
+
+Tags:
+  Снимок состояния всех таблиц
+  Reproducible analytics: query as of TAG release-2025-Q4
+
+Time travel cross-table:
+  Не только snapshot одной таблицы (как стандартный Iceberg)
+  Согласованный snapshot всего lakehouse в момент времени T
+
+Iceberg REST Spec:
+  Nessie 0.99+ предоставляет Iceberg REST API endpoint
+  Стандартные клиенты работают без модификаций
+```
+
+<Callout type="warning">
+**Nessie merge != Git merge.** Nessie replays commits ветки на target вместо создания merge-commit с двумя родителями. Каждый Nessie-commit имеет одного предка. Это упрощает linear history, но конфликтные сценарии решаются иначе.
+</Callout>
+
+## AWS Glue REST endpoint
+
+AWS Glue Data Catalog с 2024 года экспонирует Iceberg REST endpoint поверх своего метастора. Нативная интеграция с S3 Tables, IAM, Lake Formation.
+
+```
+AWS Glue Iceberg REST:
+
+Endpoint:
+  https://glue.{region}.amazonaws.com/iceberg
+  Auth: AWS Signature v4 (SigV4)
+
+Supports:
+  Iceberg spec v1 + v2 (default v2)
+  S3 object storage + S3 Tables (managed Iceberg storage)
+  Catalog federation (2025): proxy к remote Iceberg catalogs
+    → один Glue endpoint видит таблицы из Polaris/Nessie/etc
+
+Permissions:
+  IAM policies + Lake Formation tags
+  Lake Formation hybrid mode — IAM и LF одновременно
+
+Engines:
+  Athena, EMR, Redshift, SageMaker, любой Iceberg REST клиент
+```
+
+## Comparison Matrix
+
+<Grid columns={7}>
+  <div className="font-semibold text-slate-300">Критерий</div>
+  <div className="font-semibold text-blue-400">Polaris</div>
+  <div className="font-semibold text-emerald-400">Unity OSS</div>
+  <div className="font-semibold text-orange-400">Lakekeeper</div>
+  <div className="font-semibold text-purple-400">Glue REST</div>
+  <div className="font-semibold text-pink-400">Nessie</div>
+  <div className="font-semibold text-cyan-400">Gravitino</div>
+
+  <div>Происхождение</div>
+  <div>Snowflake → ASF</div>
+  <div>Databricks → LF AI</div>
+  <div>Independent (Rust)</div>
+  <div>AWS managed</div>
+  <div>Dremio</div>
+  <div>Datastrato → ASF TLP</div>
+
+  <div>Stack</div>
+  <div>Java/Quarkus + PG</div>
+  <div>Java + JDBC</div>
+  <div>Rust + PG</div>
+  <div>AWS managed</div>
+  <div>Java + RocksDB</div>
+  <div>Java + JDBC</div>
+
+  <div>Hosting</div>
+  <div>Self-host / Snowflake managed</div>
+  <div>Self-host / Databricks managed</div>
+  <div>Self-host / k8s</div>
+  <div>AWS only</div>
+  <div>Self-host / Dremio Cloud</div>
+  <div>Self-host</div>
+
+  <div>RBAC модель</div>
+  <div>Roles + privileges + OPA</div>
+  <div>UC privileges</div>
+  <div>OpenFGA ReBAC</div>
+  <div>IAM + Lake Formation</div>
+  <div>Roles по веткам</div>
+  <div>Tags + roles</div>
+
+  <div>Credential vending</div>
+  <div>Да (S3/GCS/Azure)</div>
+  <div>Да (multi-cloud)</div>
+  <div>Vended + remote signing</div>
+  <div>STS / IAM</div>
+  <div>Через storage config</div>
+  <div>Да</div>
+
+  <div>Multi-format</div>
+  <div>Iceberg + Generic (Delta/Hudi GA)</div>
+  <div>Delta + Iceberg (UniForm)</div>
+  <div>Iceberg only</div>
+  <div>Iceberg + Hive</div>
+  <div>Iceberg + Delta (limited)</div>
+  <div>Iceberg + Delta + Hudi + Paimon</div>
+
+  <div>Branching</div>
+  <div>Нет</div>
+  <div>Нет</div>
+  <div>Нет</div>
+  <div>Нет</div>
+  <div>Да (git-style)</div>
+  <div>Нет</div>
+
+  <div>AI metadata</div>
+  <div>Нет</div>
+  <div>Models + Functions + Volumes</div>
+  <div>Нет</div>
+  <div>Через SageMaker</div>
+  <div>Нет</div>
+  <div>MCP server, Lance REST</div>
+
+  <div>Vendor lock-in</div>
+  <div>Минимальный (ASF)</div>
+  <div>Низкий (LF Sandbox)</div>
+  <div>Минимальный</div>
+  <div>Высокий (AWS)</div>
+  <div>Низкий (ASL)</div>
+  <div>Минимальный (ASF TLP)</div>
+</Grid>
+
+## Architecture pattern
+
+<DiagramContainer title="Lakehouse с REST catalog: engines → catalog → storage" className="my-6">
+  <FlowColumn className="p-4 gap-3">
+    <FlowRow className="gap-2 justify-center flex-wrap">
+      <Tooltip content="Spark — batch ETL, ML training. Использует Iceberg REST client библиотеку, конфигурируется через spark.sql.catalog.X.type=rest, spark.sql.catalog.X.uri">
+        <FlowNode variant="input">Spark</FlowNode>
+      </Tooltip>
+      <Tooltip content="Trino / Presto — federated SQL, ad-hoc analytics. Iceberg connector с REST catalog поддерживает credential vending">
+        <FlowNode variant="input">Trino</FlowNode>
+      </Tooltip>
+      <Tooltip content="Flink — streaming writes в Iceberg. CDC ingestion, exactly-once через Iceberg snapshots">
+        <FlowNode variant="input">Flink</FlowNode>
+      </Tooltip>
+      <Tooltip content="Snowflake — external Iceberg tables через CATALOG INTEGRATION. Compute Snowflake, storage и каталог внешние">
+        <FlowNode variant="input">Snowflake</FlowNode>
+      </Tooltip>
+      <Tooltip content="DuckDB / PyIceberg — local analytics, embedded. Iceberg REST через httpx + pyiceberg клиент">
+        <FlowNode variant="input">DuckDB / PyIceberg</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="REST Catalog: единая точка входа. OpenAPI spec, OAuth 2.0 / SigV4. Atomic commits через CAS, RBAC, credential vending, audit log, metrics">
+      <DataBox label="Iceberg REST Catalog (Polaris / Unity / Lakekeeper / Glue / Nessie)" className="border-orange-500/30 w-96 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>Namespace + Table API</div>
+          <div>Atomic commits (CAS) + snapshots</div>
+          <div>RBAC + audit + metrics</div>
+          <div>Credential vending API</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Catalog выдаёт scoped STS токен (TTL 15-60 мин). Клиент идёт напрямую в S3 с этим токеном, минуя catalog. Catalog не становится bottleneck для data path">
+        <DataBox label="STS / Vended Credentials" className="border-yellow-500/30">
+          <div className="text-xs">scoped, short-lived</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <DataBox label="S3 / GCS / Azure ADLS" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Parquet data files</div>
+          <div>metadata.json, manifests</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Credential vending: подробнее
+
+```
+Без credential vending (старая модель):
+  1. Engine конфигурируется с долгоживущими S3 credentials
+  2. Все engines имеют доступ ко всему bucket
+  3. Утечка ключа = доступ ко всем таблицам
+  4. RBAC только на уровне engine'а, не catalog'а
+
+С credential vending:
+  1. Клиент: GET /v1/{prefix}/namespaces/sales/tables/orders/credentials
+  2. Catalog проверяет: имеет ли principal право READ на orders?
+  3. Catalog зовёт STS AssumeRole с inline policy:
+       Resource: arn:aws:s3:::lake/sales/orders/*
+       Action:   s3:GetObject
+       Duration: 15 минут
+  4. STS возвращает temp credentials catalog'у
+  5. Catalog возвращает credentials клиенту
+  6. Клиент использует их для прямого чтения S3
+  7. Через 15 минут refresh
+
+Преимущества:
+  - Утечка credentials = доступ к ОДНОЙ таблице на 15 минут
+  - Audit на уровне catalog (кто запросил доступ когда)
+  - RBAC централизован в catalog
+  - Engines не хранят долгоживущие ключи
+```
+
+## System design implications
+
+Выбор catalog — стратегическое решение, влияющее на migration cost и governance posture на годы.
+
+<Grid columns={2}>
+  <div className="font-semibold text-blue-400">Сценарий</div>
+  <div className="font-semibold text-emerald-400">Рекомендация</div>
+
+  <div>Multi-engine open lakehouse, vendor-neutral</div>
+  <div>Apache Polaris (self-host или Snowflake Open Catalog)</div>
+
+  <div>Уже на Databricks, нужен Iceberg для внешних engines</div>
+  <div>Unity Catalog (managed) с UniForm</div>
+
+  <div>Self-hosted, low ops, fine-grained authz</div>
+  <div>Lakekeeper (Rust + OpenFGA)</div>
+
+  <div>AWS-only, нужна интеграция с Lake Formation</div>
+  <div>AWS Glue REST endpoint</div>
+
+  <div>Нужны git-style branches для DataOps / тестирования</div>
+  <div>Project Nessie</div>
+
+  <div>Federated metadata, multi-format, AI/ML ассеты</div>
+  <div>Apache Gravitino</div>
+
+  <div>Несколько catalog'ов уже существуют, нужен unified layer</div>
+  <div>Gravitino поверх + Glue federation</div>
+</Grid>
+
+```
+Migration cost considerations:
+
+Catalog migration НЕ требует rewrite данных:
+  - Parquet файлы остаются в S3 без изменений
+  - metadata.json, manifests копируются
+  - REST API стандартный → клиенты не меняются (только URI)
+  - Реальная стоимость: re-register namespace и tables
+
+Lock-in риски:
+  - Proprietary RBAC модель (Unity privileges специфичны)
+  - Custom authorization (Lake Formation tags)
+  - Branching semantics (Nessie) → нет в других catalogs
+  - AI metadata (Gravitino MCP) → custom protocol
+
+Strategy:
+  1. Начни с REST spec — vendor-neutral по умолчанию
+  2. Используй стандартные RBAC через OAuth principal mapping
+  3. Branching, AI metadata — добавляй когда они критичны
+  4. Federation (Gravitino, Glue catalog federation) =
+     эволюционный путь, а не разовая миграция
+```
+
+<Callout type="tip">
+**Production-ready stack 2026:** Apache Polaris 1.3 self-hosted ИЛИ Snowflake Open Catalog managed для core Iceberg lakehouse + AWS Glue REST как federation endpoint для Athena/Redshift, если AWS уже используется. Lakekeeper — для команд с Rust-стеком и OpenFGA. Nessie — отдельный enabling layer для DataOps workflows с branching.
+</Callout>
+
+<Callout type="warning">
+**Anti-pattern: catalog как data plane.** Catalog должен обрабатывать только metadata + credential vending. Если все читают данные через catalog (proxy режим) — catalog становится bottleneck. Правильно: catalog отдаёт STS токены, клиент читает S3 напрямую.
+</Callout>
+
+<KnowledgeCheck>
+1. Почему Hadoop Catalog (file-based) приводит к data loss на S3 при concurrent writers, и как REST catalog это решает?
+2. Что такое credential vending и почему scoped short-lived credentials лучше, чем долгоживущие S3 ключи в config'е engine'а?
+3. Когда выбрать Nessie вместо Polaris, и какую цену вы платите за git-style branching?
+
+Iceberg REST catalogs: REST spec — vendor-neutral основа. Polaris (ASF) — reference implementation, Unity OSS — Delta+Iceberg multi-modal, Lakekeeper — Rust+OpenFGA, Glue REST — AWS-managed, Nessie — git-style branching, Gravitino — federated multi-format + AI metadata. Credential vending = scoped STS токены. Catalog НЕ должен быть data plane — только metadata + auth. В следующем модуле: Data Modeling.
+</KnowledgeCheck>
