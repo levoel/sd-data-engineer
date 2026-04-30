@@ -82,6 +82,19 @@
     "spark",
     "airflow"
   ],
+  "prerequisites": {
+    "courses": [
+      {"slug": "python-course", "level": "required"},
+      {"slug": "storage-formats", "level": "required"},
+      {"slug": "kafka-course", "level": "required"},
+      {"slug": "spark-course", "level": "required"},
+      {"slug": "clickhouse-course", "level": "required"},
+      {"slug": "datafusion-course", "level": "recommended"},
+      {"slug": "debezium-course", "level": "required"},
+      {"slug": "data-governance", "level": "recommended"}
+    ],
+    "external": ["хотя бы один из {clickhouse-course, datafusion-course} обязателен"]
+  },
   "estimatedHours": 70,
   "pricing": {
     "type": "free"
