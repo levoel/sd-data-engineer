@@ -1,6 +1,6 @@
 {
   "id": "sd-data-engineer",
-  "title": "System Design для Data Engineer",
+  "title": "System Design (DE)",
   "description": "Проектирование data-платформ — от pipeline architecture через lakehouse и streaming до production data operations",
   "author": "Lev Neganov",
   "difficulty": "advanced",
